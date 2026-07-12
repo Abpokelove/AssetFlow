@@ -1,21 +1,26 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const employeeRepository = require("./repositories/employeeRepository");
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-
-const users = [];
 
 const hashPassword = async (password) => bcrypt.hash(password, 10);
 const comparePassword = async (password, hashedPassword) => bcrypt.compare(password, hashedPassword);
 
 const createToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, {
+  jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 
-const registerUser = async ({ name, email, password, role = "employee" }) => {
-  const existing = users.find((user) => user.email === email);
+const registerUser = async ({ name, email, password, role = "Employee" }) => {
+  if (!email) {
+    const error = new Error("Email is required");
+    error.statusCode = 400;
+    throw error;
+  }
+  
+  const existing = await employeeRepository.findByEmail(email.trim().toLowerCase());
   if (existing) {
     const error = new Error("Email already registered");
     error.statusCode = 409;
@@ -23,33 +28,36 @@ const registerUser = async ({ name, email, password, role = "employee" }) => {
   }
 
   const passwordHash = await hashPassword(password);
-  const user = {
-    id: users.length + 1,
+  const employee = await employeeRepository.create({
     name,
-    email,
-    password: passwordHash,
+    email: email.trim().toLowerCase(),
+    passwordHash,
     role,
-  };
-
-  users.push(user);
+  });
 
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    id: employee.id,
+    name: employee.name,
+    email: employee.email,
+    role: employee.role,
   };
 };
 
 const loginUser = async ({ email, password }) => {
-  const user = users.find((entry) => entry.email === email);
+  if (!email || !password) {
+    const error = new Error("Invalid credentials");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const user = await employeeRepository.findByEmail(email.trim().toLowerCase());
   if (!user) {
     const error = new Error("Invalid credentials");
     error.statusCode = 401;
     throw error;
   }
 
-  const isValidPassword = await comparePassword(password, user.password);
+  const isValidPassword = await comparePassword(password, user.passwordHash);
   if (!isValidPassword) {
     const error = new Error("Invalid credentials");
     error.statusCode = 401;
