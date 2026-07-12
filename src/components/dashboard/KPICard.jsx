@@ -14,7 +14,7 @@ export default function KPICard({ title, value, icon: Icon, color = '#5E244E', t
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay }}
       onClick={onClick}
-      className={`bg-surface rounded-card shadow-card border border-border p-5 flex flex-col gap-3 ${onClick ? 'cursor-pointer hover:shadow-card-hover transition-shadow duration-200' : ''}`}
+      className={`bg-surface/95 rounded-card shadow-card border border-border/80 p-5 flex flex-col gap-3 transition-all duration-200 ${onClick ? 'cursor-pointer hover:shadow-card-hover hover:-translate-y-[2px]' : ''}`}
     >
       <div className="flex items-start justify-between">
         <div>

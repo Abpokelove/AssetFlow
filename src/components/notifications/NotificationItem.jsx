@@ -25,8 +25,8 @@ export default function NotificationItem({ notification, onMarkRead, onDelete })
 
   return (
     <div
-      className={`flex gap-4 p-4 rounded-card border transition-all hover:shadow-card group cursor-pointer ${
-        !notification.read ? 'bg-primary/4 border-primary/15' : 'bg-surface border-border hover:border-border-divider'
+      className={`flex gap-4 p-4 rounded-card border transition-all duration-200 hover:shadow-card-hover hover:-translate-y-[1px] group cursor-pointer ${
+        !notification.read ? 'bg-primary/4 border-primary/15' : 'bg-surface/95 border-border hover:border-border-divider'
       }`}
       onClick={handleClick}
     >

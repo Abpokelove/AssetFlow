@@ -93,7 +93,7 @@ export default function DataTable({
                 <tr
                   key={row.id}
                   onClick={() => onRowClick?.(row.original)}
-                  className={`hover:bg-background/70 transition-colors border-b border-border last:border-0 ${onRowClick ? 'cursor-pointer' : ''}`}
+                  className={`hover:bg-background/80 transition-all duration-150 border-b border-border last:border-0 ${onRowClick ? 'cursor-pointer hover:translate-y-[0px]' : ''}`}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="py-3.5 px-4 text-sm text-text-primary">
@@ -118,7 +118,7 @@ export default function DataTable({
             <div
               key={row.id}
               onClick={() => onRowClick?.(row.original)}
-              className={`bg-surface rounded-card border border-border p-4 space-y-2 ${onRowClick ? 'cursor-pointer hover:shadow-card-hover transition-shadow' : ''}`}
+              className={`bg-surface/95 rounded-card border border-border/80 p-4 space-y-2 transition-all duration-200 ${onRowClick ? 'cursor-pointer hover:shadow-card-hover hover:-translate-y-[1px]' : ''}`}
             >
               {row.getVisibleCells().map((cell) => {
                 const header = cell.column.columnDef.header;

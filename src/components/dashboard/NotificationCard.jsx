@@ -16,7 +16,7 @@ export default function NotificationCard({ notification }) {
   const { Icon } = cfg;
 
   return (
-    <div className={`flex gap-3 p-3 rounded-button transition-colors hover:bg-background ${!notification.read ? 'bg-primary/5' : ''}`}>
+    <div className={`flex gap-3 p-3 rounded-button transition-all duration-200 hover:bg-background hover:-translate-y-[1px] ${!notification.read ? 'bg-primary/5' : ''}`}>
       <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: cfg.bg }}>
         <Icon size={14} style={{ color: cfg.color }} />
       </div>

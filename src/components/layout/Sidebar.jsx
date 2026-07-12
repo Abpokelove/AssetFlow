@@ -33,7 +33,10 @@ export default function Sidebar() {
   const SidebarContent = ({ collapsed }) => (
     <div className="flex flex-col h-full">
       {/* ---- Logo ---- */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
+      <div
+        className={`flex items-center gap-3 px-4 py-5 border-b border-white/10 ${collapsed ? 'cursor-pointer' : ''}`}
+        onClick={collapsed ? toggleSidebar : undefined}
+      >
         <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
           <Boxes size={18} className="text-white" />
         </div>
@@ -131,17 +134,16 @@ export default function Sidebar() {
         <SidebarContent collapsed={sidebarCollapsed} />
 
         {/* Collapse Toggle */}
-        <button
-          onClick={toggleSidebar}
-          className="absolute top-5 right-3 w-7 h-7 rounded-full bg-primary border-2 border-background
-                     flex items-center justify-center text-white hover:bg-primary-hover transition-colors z-20"
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {sidebarCollapsed
-            ? <ChevronRight size={12} />
-            : <ChevronLeft size={12} />
-          }
-        </button>
+        {!sidebarCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className="absolute top-5 right-3 w-7 h-7 rounded-full bg-primary border-2 border-background
+                       flex items-center justify-center text-white hover:bg-primary-hover transition-colors z-20"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft size={12} />
+          </button>
+        )}
       </motion.aside>
 
       {/* ---- Mobile Drawer ---- */}
