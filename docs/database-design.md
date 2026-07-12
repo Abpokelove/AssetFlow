@@ -1,379 +1,142 @@
-# AssetFlow — ER Diagram and Database Schema Design
+# AssetFlow — Database Design and Optimization
 
-## 1. Overview
+## 1. My Design Approach
 
-AssetFlow is an Enterprise Asset and Resource Management System that helps organizations:
+For AssetFlow, I designed the database by first separating the system into small modules instead of keeping everything in one large table.
 
-- Register and track physical assets
-- Allocate assets to employees or departments
-- Prevent duplicate asset allocation
-- Transfer and return allocated assets
-- Book shared resources without time conflicts
-- Manage maintenance approval workflows
-- Conduct structured asset audits
-- Generate notifications and activity logs
-- Track the complete lifecycle of every asset
+The main modules are:
 
-The database is designed using PostgreSQL because AssetFlow contains strongly related business entities, transactional workflows, conflict-prevention rules and audit requirements.
+- Organization and users
+- Asset master data
+- Asset allocation and transfer
+- Resource booking
+- Maintenance
+- Audit management
+- Notifications and activity tracking
 
-The schema is based on the AssetFlow hackathon requirements, including secure role assignment, asset lifecycle tracking, booking-overlap prevention, maintenance approval, audit cycles and notifications. :contentReference[oaicite:0]{index=0}
+I used PostgreSQL because this project needs strong relationships, transactions, constraints, indexing, and conflict handling.
 
----
-
-## 2. Database Design Goals
-
-The database is designed to provide:
-
-1. **Data integrity** through foreign keys, checks and unique constraints
-2. **Conflict prevention** for allocations and resource bookings
-3. **Complete history** for allocation, transfer, maintenance and audit activity
-4. **Secure role management** without self-assigned administrative roles
-5. **Transaction safety** for multi-table workflows
-6. **Efficient search and filtering** through appropriate indexes
-7. **Scalability** through normalized and modular tables
-8. **Traceability** through notifications and activity logs
+The final design contains **12 core tables and 2 supporting tables**. This is enough to cover the important workflows without making the schema too large for an 8-hour hackathon.
 
 ---
 
-## 3. Main Modules
+## 2. Final Tables
 
-| Module | Main Tables |
-|---|---|
-| Authentication and RBAC | `employees`, `roles`, `employee_roles` |
-| Organization Setup | `departments`, `asset_categories` |
-| Asset Management | `assets`, `asset_documents` |
-| Allocation and Transfer | `asset_allocations`, `transfer_requests` |
-| Resource Booking | `resource_bookings` |
-| Maintenance | `maintenance_requests` |
-| Asset Auditing | `audit_cycles`, `audit_assignments`, `audit_items` |
-| Communication | `notifications` |
-| Traceability | `activity_logs` |
+### Core Tables
 
----
+1. `roles`
+2. `departments`
+3. `employees`
+4. `asset_categories`
+5. `assets`
+6. `asset_allocations`
+7. `transfer_requests`
+8. `resource_bookings`
+9. `maintenance_requests`
+10. `audit_cycles`
+11. `audit_assignments`
+12. `audit_items`
 
-## 4. ER Diagram
+### Supporting Tables
 
-```mermaid
-erDiagram
-
-    ROLES {
-        bigint id PK
-        varchar name UK
-        text description
-        timestamp created_at
-    }
-
-    DEPARTMENTS {
-        bigint id PK
-        varchar name
-        varchar code UK
-        bigint parent_department_id FK
-        bigint head_employee_id FK
-        varchar status
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    EMPLOYEES {
-        bigint id PK
-        varchar name
-        varchar email UK
-        text password_hash
-        bigint department_id FK
-        varchar status
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    EMPLOYEE_ROLES {
-        bigint employee_id PK,FK
-        bigint role_id PK,FK
-        bigint assigned_by FK
-        timestamp assigned_at
-    }
-
-    ASSET_CATEGORIES {
-        bigint id PK
-        varchar name UK
-        text description
-        jsonb custom_fields
-        varchar status
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    ASSETS {
-        bigint id PK
-        varchar asset_tag UK
-        varchar serial_number UK
-        varchar name
-        bigint category_id FK
-        bigint department_id FK
-        date acquisition_date
-        numeric acquisition_cost
-        varchar asset_condition
-        varchar location
-        boolean is_bookable
-        varchar status
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    ASSET_DOCUMENTS {
-        bigint id PK
-        bigint asset_id FK
-        varchar file_name
-        varchar file_path
-        varchar file_type
-        bigint uploaded_by FK
-        timestamp uploaded_at
-    }
-
-    ASSET_ALLOCATIONS {
-        bigint id PK
-        bigint asset_id FK
-        bigint employee_id FK
-        bigint department_id FK
-        bigint allocated_by FK
-        date expected_return_date
-        timestamp allocated_at
-        timestamp returned_at
-        varchar condition_out
-        varchar condition_in
-        text return_notes
-        varchar status
-    }
-
-    TRANSFER_REQUESTS {
-        bigint id PK
-        bigint allocation_id FK
-        bigint requested_employee_id FK
-        bigint requested_department_id FK
-        bigint requested_by FK
-        bigint reviewed_by FK
-        text reason
-        varchar status
-        timestamp requested_at
-        timestamp reviewed_at
-    }
-
-    RESOURCE_BOOKINGS {
-        bigint id PK
-        bigint asset_id FK
-        bigint employee_id FK
-        timestamp start_time
-        timestamp end_time
-        text purpose
-        varchar status
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    MAINTENANCE_REQUESTS {
-        bigint id PK
-        bigint asset_id FK
-        bigint raised_by FK
-        bigint approved_by FK
-        bigint technician_id FK
-        varchar priority
-        text issue_description
-        text resolution_notes
-        varchar status
-        timestamp requested_at
-        timestamp approved_at
-        timestamp resolved_at
-    }
-
-    AUDIT_CYCLES {
-        bigint id PK
-        varchar title
-        bigint department_id FK
-        varchar location
-        date start_date
-        date end_date
-        varchar status
-        bigint created_by FK
-        timestamp closed_at
-        timestamp created_at
-    }
-
-    AUDIT_ASSIGNMENTS {
-        bigint audit_cycle_id PK,FK
-        bigint auditor_id PK,FK
-        timestamp assigned_at
-    }
-
-    AUDIT_ITEMS {
-        bigint id PK
-        bigint audit_cycle_id FK
-        bigint asset_id FK
-        bigint verified_by FK
-        varchar verification_status
-        text remarks
-        timestamp verified_at
-    }
-
-    NOTIFICATIONS {
-        bigint id PK
-        bigint employee_id FK
-        varchar notification_type
-        varchar title
-        text message
-        boolean is_read
-        timestamp created_at
-        timestamp read_at
-    }
-
-    ACTIVITY_LOGS {
-        bigint id PK
-        bigint employee_id FK
-        varchar action
-        varchar entity_type
-        bigint entity_id
-        jsonb previous_data
-        jsonb new_data
-        timestamp created_at
-    }
-
-    DEPARTMENTS ||--o{ DEPARTMENTS : "parent of"
-    DEPARTMENTS ||--o{ EMPLOYEES : "contains"
-    EMPLOYEES o|--o{ DEPARTMENTS : "heads"
-
-    EMPLOYEES ||--o{ EMPLOYEE_ROLES : "has"
-    ROLES ||--o{ EMPLOYEE_ROLES : "assigned through"
-    EMPLOYEES ||--o{ EMPLOYEE_ROLES : "assigns roles"
-
-    ASSET_CATEGORIES ||--o{ ASSETS : "classifies"
-    DEPARTMENTS ||--o{ ASSETS : "owns"
-    ASSETS ||--o{ ASSET_DOCUMENTS : "has"
-    EMPLOYEES ||--o{ ASSET_DOCUMENTS : "uploads"
-
-    ASSETS ||--o{ ASSET_ALLOCATIONS : "allocation history"
-    EMPLOYEES o|--o{ ASSET_ALLOCATIONS : "receives"
-    DEPARTMENTS o|--o{ ASSET_ALLOCATIONS : "receives"
-    EMPLOYEES ||--o{ ASSET_ALLOCATIONS : "allocates"
-
-    ASSET_ALLOCATIONS ||--o{ TRANSFER_REQUESTS : "has"
-    EMPLOYEES ||--o{ TRANSFER_REQUESTS : "requests or reviews"
-
-    ASSETS ||--o{ RESOURCE_BOOKINGS : "booked through"
-    EMPLOYEES ||--o{ RESOURCE_BOOKINGS : "creates"
-
-    ASSETS ||--o{ MAINTENANCE_REQUESTS : "undergoes"
-    EMPLOYEES ||--o{ MAINTENANCE_REQUESTS : "raises or manages"
-
-    DEPARTMENTS o|--o{ AUDIT_CYCLES : "scopes"
-    AUDIT_CYCLES ||--o{ AUDIT_ASSIGNMENTS : "assigns"
-    EMPLOYEES ||--o{ AUDIT_ASSIGNMENTS : "audits"
-    AUDIT_CYCLES ||--o{ AUDIT_ITEMS : "contains"
-    ASSETS ||--o{ AUDIT_ITEMS : "verified in"
-
-    EMPLOYEES ||--o{ NOTIFICATIONS : "receives"
-    EMPLOYEES o|--o{ ACTIVITY_LOGS : "performs"
-```
+13. `notifications`
+14. `activity_logs`
 
 ---
 
-## 5. Role Management Design
-
-AssetFlow uses the following roles:
-
-- `ADMIN`
-- `ASSET_MANAGER`
-- `DEPARTMENT_HEAD`
-- `EMPLOYEE`
-
-A newly registered user receives only the `EMPLOYEE` role.
-
-Users cannot select administrative roles during signup. An authorized Admin assigns additional roles through the Employee Directory.
-
-The `employee_roles` junction table is used instead of a single role column because one employee may perform multiple responsibilities.
-
-Example:
+## 3. Main Relationships
 
 ```text
-Priya
-├── EMPLOYEE
-└── DEPARTMENT_HEAD
+roles
+  └── employees
+
+departments
+  ├── employees
+  ├── assets
+  └── child departments
+
+asset_categories
+  └── assets
+
+assets
+  ├── asset_allocations
+  ├── resource_bookings
+  ├── maintenance_requests
+  └── audit_items
+
+asset_allocations
+  └── transfer_requests
+
+audit_cycles
+  ├── audit_assignments
+  └── audit_items
+
+employees
+  ├── notifications
+  └── activity_logs
 ```
 
-This design makes the RBAC system more flexible and scalable.
+The `assets` table is the centre of the design because allocation, booking, maintenance, and audit operations all depend on an asset.
 
 ---
 
-## 6. Department Hierarchy
+## 4. Normalization Used
 
-The `departments` table contains a self-referencing foreign key:
+I normalized the schema up to **Third Normal Form (3NF)**.
+
+### First Normal Form — 1NF
+
+Each column stores only one value.
+
+For example:
+
+- I did not store multiple employee IDs in one asset row.
+- I did not store multiple bookings inside one column.
+- Each booking, allocation, and maintenance request has its own row.
+
+### Second Normal Form — 2NF
+
+Every non-key field depends on the complete primary key.
+
+For example:
+
+- `audit_assignments` uses the combined key:
+  - `audit_cycle_id`
+  - `auditor_id`
+- `assigned_at` depends on that full assignment.
+
+### Third Normal Form — 3NF
+
+Repeated information is moved into separate tables.
+
+Examples:
+
+- Role names are stored in `roles`, not repeated as text in every employee.
+- Category names are stored in `asset_categories`, not repeated in every asset.
+- Department details are stored in `departments`.
+- Allocation history is stored in `asset_allocations`.
+- Maintenance history is stored in `maintenance_requests`.
+- Audit results are stored in `audit_items`.
+
+This reduces duplicated data and prevents update inconsistencies.
+
+---
+
+## 5. Important Database Rules
+
+### One active allocation per asset
+
+An asset can have many old allocation records, but only one active allocation.
 
 ```sql
-parent_department_id BIGINT REFERENCES departments(id)
+CREATE UNIQUE INDEX uq_active_asset_allocation
+ON asset_allocations(asset_id)
+WHERE status = 'ACTIVE';
 ```
 
-This allows hierarchical organization structures:
+### Allocation must have one target
 
-```text
-Engineering
-├── Software Development
-├── Quality Assurance
-└── Infrastructure
-```
-
-The `head_employee_id` field identifies the employee responsible for a department.
-
-A department may temporarily have no head, so this field is nullable.
-
----
-
-## 7. Asset Lifecycle
-
-Supported asset statuses:
-
-```text
-AVAILABLE
-ALLOCATED
-RESERVED
-UNDER_MAINTENANCE
-LOST
-RETIRED
-DISPOSED
-```
-
-### Valid example transitions
-
-```text
-AVAILABLE → ALLOCATED
-AVAILABLE → RESERVED
-AVAILABLE → UNDER_MAINTENANCE
-
-ALLOCATED → AVAILABLE
-ALLOCATED → UNDER_MAINTENANCE
-
-RESERVED → AVAILABLE
-RESERVED → ALLOCATED
-
-UNDER_MAINTENANCE → AVAILABLE
-
-AVAILABLE → LOST
-AVAILABLE → RETIRED
-RETIRED → DISPOSED
-```
-
-Invalid transitions are rejected by the service layer.
-
-The database uses a `CHECK` constraint to reject unknown status values.
-
----
-
-## 8. Asset Allocation Design
-
-The `asset_allocations` table stores both current and historical allocations.
-
-An allocation may target either:
-
-- An employee, or
-- A department
-
-It must not target both simultaneously.
+An asset is allocated either to an employee or to a department, but not both.
 
 ```sql
 CHECK (
@@ -383,405 +146,135 @@ CHECK (
 )
 ```
 
-### Preventing double allocation
-
-An asset can have many historical allocation records but only one active allocation.
+### Transfer must also have one target
 
 ```sql
-CREATE UNIQUE INDEX uq_active_asset_allocation
-ON asset_allocations(asset_id)
-WHERE status = 'ACTIVE';
+CHECK (
+    (target_employee_id IS NOT NULL AND target_department_id IS NULL)
+    OR
+    (target_employee_id IS NULL AND target_department_id IS NOT NULL)
+)
 ```
 
-This is a **partial unique index**.
-
-It guarantees that PostgreSQL cannot store two active allocation records for the same asset.
-
----
-
-## 9. Allocation Transaction
-
-Asset allocation is executed inside a transaction.
-
-```text
-BEGIN
-  ↓
-Lock asset record
-  ↓
-Verify asset status is AVAILABLE
-  ↓
-Create active allocation
-  ↓
-Update asset status to ALLOCATED
-  ↓
-Create activity log
-  ↓
-Create notification
-COMMIT
-```
-
-The selected asset is locked using:
-
-```sql
-SELECT id, status
-FROM assets
-WHERE id = $1
-FOR UPDATE;
-```
-
-Row locking prevents two concurrent requests from allocating the same asset simultaneously.
-
-If any step fails:
-
-```text
-ROLLBACK
-```
-
-No partial or inconsistent data is stored.
-
----
-
-## 10. Asset Return Workflow
-
-When an asset is returned:
-
-1. The active allocation is locked.
-2. Return condition and notes are recorded.
-3. Allocation status becomes `RETURNED`.
-4. `returned_at` is recorded.
-5. Asset status becomes `AVAILABLE`.
-6. Activity and notification records are created.
-
-Overdue status is not stored permanently.
-
-It is calculated dynamically:
-
-```sql
-SELECT *
-FROM asset_allocations
-WHERE status = 'ACTIVE'
-  AND expected_return_date < CURRENT_DATE;
-```
-
-This avoids stale or duplicated overdue information.
-
----
-
-## 11. Transfer Workflow
-
-Transfer statuses:
-
-```text
-REQUESTED
-APPROVED
-REJECTED
-CANCELLED
-```
-
-Workflow:
-
-```text
-Current allocation
-      ↓
-Transfer requested
-      ↓
-Asset Manager or Department Head reviews
-      ↓
-Approved or Rejected
-```
-
-When approved, the system performs one transaction:
-
-```text
-Old allocation → TRANSFERRED
-New allocation → ACTIVE
-Asset remains → ALLOCATED
-Notification created
-Activity history recorded
-```
-
----
-
-## 12. Resource Booking Design
-
-Only assets with:
-
-```text
-is_bookable = TRUE
-```
-
-can be booked.
-
-Every booking must satisfy:
+### Booking time must be valid
 
 ```sql
 CHECK (start_time < end_time)
 ```
 
-### Time-overlap rule
+### Booking overlap prevention
 
-A conflict exists when:
-
-```text
-existing_start < requested_end
-AND
-existing_end > requested_start
-```
-
-Example:
-
-```text
-Existing booking: 09:00–10:00
-Requested booking: 09:30–10:30
-Result: Rejected
-```
-
-```text
-Existing booking: 09:00–10:00
-Requested booking: 10:00–11:00
-Result: Allowed
-```
-
-### PostgreSQL-level overlap protection
-
-PostgreSQL can enforce the rule using an exclusion constraint:
+For the same asset, two active bookings must not overlap.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 ALTER TABLE resource_bookings
-ADD CONSTRAINT prevent_resource_booking_overlap
+ADD CONSTRAINT prevent_booking_overlap
 EXCLUDE USING gist (
     asset_id WITH =,
     tstzrange(start_time, end_time, '[)') WITH &&
 )
-WHERE (status IN ('UPCOMING', 'ONGOING'));
+WHERE (cancelled_at IS NULL);
 ```
 
-`[)` means:
+Using `[)` allows one booking to begin exactly when another booking ends.
 
-- Start time is included
-- End time is excluded
-
-Therefore, a booking ending at 10:00 does not conflict with another booking starting at 10:00.
-
-This database constraint protects the system even if two booking requests arrive concurrently.
-
----
-
-## 13. Maintenance Workflow
-
-Maintenance statuses:
-
-```text
-PENDING
-APPROVED
-REJECTED
-TECHNICIAN_ASSIGNED
-IN_PROGRESS
-RESOLVED
-```
-
-Workflow:
-
-```text
-Employee raises request
-        ↓
-PENDING
-        ↓
-Asset Manager reviews
-   ↙             ↘
-REJECTED       APPROVED
-                    ↓
-          TECHNICIAN_ASSIGNED
-                    ↓
-              IN_PROGRESS
-                    ↓
-                RESOLVED
-```
-
-When maintenance is approved:
-
-```text
-Asset status → UNDER_MAINTENANCE
-```
-
-When maintenance is resolved:
-
-```text
-Asset status → AVAILABLE
-```
-
-The approval and resolution operations use transactions to keep the maintenance request and asset status synchronized.
-
----
-
-## 14. Audit Cycle Design
-
-An audit is represented using three tables:
-
-### `audit_cycles`
-
-Stores the overall audit:
-
-- Scope
-- Department
-- Location
-- Start and end dates
-- Status
-- Created by
-- Closed time
-
-### `audit_assignments`
-
-Connects auditors to an audit cycle.
-
-This is a many-to-many relationship because:
-
-- One cycle may have multiple auditors.
-- One employee may audit multiple cycles.
-
-### `audit_items`
-
-Stores the verification result for every asset.
-
-Possible verification statuses:
-
-```text
-PENDING
-VERIFIED
-MISSING
-DAMAGED
-```
-
-A discrepancy report is generated from:
+### One asset per audit cycle
 
 ```sql
-SELECT *
-FROM audit_items
-WHERE audit_cycle_id = $1
-  AND verification_status IN ('MISSING', 'DAMAGED');
+UNIQUE (audit_cycle_id, asset_id)
 ```
 
-A separate discrepancy table is unnecessary because the discrepancy data already exists in `audit_items`.
-
-When an audit cycle is closed:
-
-- Further modifications are blocked.
-- Confirmed missing assets may be changed to `LOST`.
-- The closing action is recorded in `activity_logs`.
+This prevents the same asset from appearing twice in the same audit.
 
 ---
 
-## 15. Notifications
+## 6. Transaction Design
 
-Notifications are created for events such as:
+I use transactions when one action updates multiple tables.
 
-- Asset assigned
-- Asset returned
-- Transfer requested
-- Transfer approved or rejected
-- Booking confirmed
-- Booking cancelled
-- Booking reminder
-- Maintenance approved or rejected
-- Overdue return detected
-- Audit discrepancy found
-
-Each notification contains:
+### Asset Allocation
 
 ```text
-Recipient
-Notification type
-Title
-Message
-Read status
-Creation time
-Read time
+BEGIN
+Lock the asset
+Check that it is AVAILABLE
+Create ACTIVE allocation
+Change asset status to ALLOCATED
+Create notification
+Create activity log
+COMMIT
 ```
 
-The initial hackathon implementation uses in-app notifications.
+### Asset Return
 
-Email delivery can be introduced later without changing the main schema.
-
----
-
-## 16. Activity Logging
-
-The `activity_logs` table records:
-
-- Who performed the action
-- What action was performed
-- Which entity was affected
-- Previous data
-- New data
-- When the action occurred
-
-Example:
-
-```json
-{
-  "action": "ASSET_ALLOCATED",
-  "entity_type": "ASSET",
-  "entity_id": 14,
-  "previous_data": {
-    "status": "AVAILABLE"
-  },
-  "new_data": {
-    "status": "ALLOCATED",
-    "employee_id": 8
-  }
-}
+```text
+BEGIN
+Lock active allocation
+Mark it as RETURNED
+Store return condition
+Change asset status to AVAILABLE
+Create notification and log
+COMMIT
 ```
 
-`JSONB` is used for previous and new data because different entities have different structures.
+### Transfer Approval
 
-The main relational data remains normalized.
+```text
+BEGIN
+Lock current allocation
+Mark old allocation as TRANSFERRED
+Create new ACTIVE allocation
+Keep the asset status as ALLOCATED
+Create notifications and log
+COMMIT
+```
 
----
+### Maintenance Approval
 
-## 17. Important Constraints
+```text
+BEGIN
+Approve maintenance request
+Change asset status to UNDER_MAINTENANCE
+Create notification and log
+COMMIT
+```
 
-| Rule | Database Protection |
-|---|---|
-| Employee email must be unique | `UNIQUE(email)` |
-| Asset tag must be unique | `UNIQUE(asset_tag)` |
-| Serial number must be unique | `UNIQUE(serial_number)` |
-| Acquisition cost cannot be negative | `CHECK (acquisition_cost >= 0)` |
-| Booking start must precede booking end | `CHECK (start_time < end_time)` |
-| One active allocation per asset | Partial unique index |
-| Allocation must target employee or department | `CHECK` constraint |
-| Unknown statuses are rejected | Status `CHECK` constraints |
-| Invalid relationships are rejected | Foreign keys |
-| Booking overlaps are blocked | Exclusion constraint |
+### Maintenance Resolution
 
----
+```text
+BEGIN
+Resolve maintenance request
+Change asset status to AVAILABLE
+Create notification and log
+COMMIT
+```
 
-## 18. Delete Behaviour
-
-Delete rules are chosen carefully.
-
-| Relationship | Delete behaviour | Reason |
-|---|---|---|
-| Department → Employee | `SET NULL` or block deactivation | Employee history should remain |
-| Category → Asset | `RESTRICT` | Category in use must not be deleted |
-| Asset → Allocation | `RESTRICT` | Allocation history must remain |
-| Asset → Booking | `RESTRICT` | Booking history must remain |
-| Asset → Maintenance | `RESTRICT` | Maintenance history must remain |
-| Audit Cycle → Audit Items | `CASCADE` before cycle begins | Child items belong only to cycle |
-| Employee → Activity Log | `SET NULL` | Log remains after employee deactivation |
-
-Business records should normally be **deactivated**, not physically deleted.
+Transactions make sure partial updates are not saved when one step fails.
 
 ---
 
-## 19. Indexing Strategy
+## 7. Optimizations Used
 
-Indexes are added to frequently searched, filtered and joined columns.
+### Partial Unique Index
+
+Used to allow only one active allocation while still keeping old allocation history.
+
+### PostgreSQL Exclusion Constraint
+
+Used to prevent overlapping bookings for the same asset.
+
+### Indexes on common filters
+
+I added indexes for columns used often in search, filtering, and joins.
 
 ```sql
 CREATE INDEX idx_employees_department
 ON employees(department_id);
+
+CREATE INDEX idx_employees_role
+ON employees(role_id);
 
 CREATE INDEX idx_assets_category
 ON assets(category_id);
@@ -798,193 +291,145 @@ ON assets(location);
 CREATE INDEX idx_allocations_employee
 ON asset_allocations(employee_id);
 
-CREATE INDEX idx_allocations_expected_return
+CREATE INDEX idx_active_allocations_due
 ON asset_allocations(expected_return_date)
 WHERE status = 'ACTIVE';
-
-CREATE INDEX idx_bookings_asset_time
-ON resource_bookings(asset_id, start_time, end_time);
 
 CREATE INDEX idx_maintenance_asset_status
 ON maintenance_requests(asset_id, status);
 
-CREATE INDEX idx_notifications_employee_unread
-ON notifications(employee_id, is_read);
-
-CREATE INDEX idx_activity_entity
-ON activity_logs(entity_type, entity_id);
+CREATE INDEX idx_notifications_unread
+ON notifications(employee_id, created_at DESC)
+WHERE is_read = FALSE;
 ```
 
-Indexes are not added to every column because excessive indexes increase insert and update cost.
+### Dynamic values instead of duplicated values
+
+I calculate these values directly from existing data:
+
+- Overdue returns
+- Upcoming bookings
+- Ongoing bookings
+- Completed bookings
+- Dashboard counts
+- Audit discrepancy reports
+
+This avoids storing values that may become outdated.
+
+### Foreign Keys
+
+Foreign keys are used to prevent invalid references.
+
+Example:
+
+- An allocation cannot refer to an asset that does not exist.
+- A booking cannot refer to an employee that does not exist.
+- An audit item cannot refer to an invalid audit cycle.
+
+### Check Constraints
+
+Check constraints are used for:
+
+- Valid statuses
+- Positive acquisition cost
+- Correct booking time
+- Correct allocation target
+- Correct audit date range
 
 ---
 
-## 20. Normalization
+## 8. Deliberate Simplifications
 
-The schema follows approximately Third Normal Form.
+To keep the project achievable, I made a few design decisions.
 
-### Examples
+### No separate `resources` table
 
-- Role names are stored once in `roles`.
-- Category names are stored once in `asset_categories`.
-- Department information is not repeated in every employee record.
-- Allocation history is separated from the asset master record.
-- Booking history is stored separately.
-- Maintenance history is stored separately.
-- Audit assignments use a junction table.
-- Notifications and logs are independent modules.
+Rooms, vehicles, and shared equipment are already assets.
 
-This reduces:
-
-- Duplicate data
-- Update anomalies
-- Deletion anomalies
-- Inconsistent values
-
----
-
-## 21. Security Considerations
-
-- Passwords are stored only as secure hashes.
-- Signup cannot assign elevated roles.
-- Admin permissions are validated by the backend.
-- SQL queries use parameterized placeholders.
-- Sensitive database credentials are stored in `.env`.
-- `.env` is excluded from Git.
-- Backend ownership checks protect update and approval operations.
-- Activity logs record sensitive administrative actions.
-- Frontend role checks are used for usability, not as the only security layer.
-
----
-
-## 22. Repository Architecture
+I use:
 
 ```text
-React Frontend
-      ↓
-Express Routes
-      ↓
-Controllers
-      ↓
-Services
-      ↓
-Repositories
-      ↓
-PostgreSQL
+assets.is_bookable = TRUE
 ```
 
-### Responsibilities
+So all resources are assets, but not every asset is a resource.
 
-- **Routes:** Define endpoints and middleware
-- **Controllers:** Receive requests and return responses
-- **Services:** Apply business rules and transactions
-- **Repositories:** Execute parameterized SQL
-- **PostgreSQL:** Enforce final data integrity
+### No `employee_roles` junction table
 
-Controllers must not contain raw SQL.
+Each employee has one main role using:
 
-Repositories must not contain UI or HTTP-response logic.
+```text
+employees.role_id
+```
 
----
+This keeps login, JWT, backend authorization, and frontend navigation simple.
 
-## 23. Implementation Priority
+### No report tables
 
-### Phase 1 — Foundation
+Reports and dashboard values are generated using live SQL queries.
 
-- Roles
-- Departments
-- Employees
-- Categories
-- Assets
+This keeps the data dynamic and avoids duplication.
 
-### Phase 2 — Core workflow
+### No separate document table for the MVP
 
-- Allocation
-- Return
-- Transfer
-- Double-allocation prevention
+The `assets` table stores one `photo_url` and one `document_url`.
 
-### Phase 3 — Resource and maintenance workflows
+A separate document table can be added later if multiple documents per asset are required.
 
-- Booking
-- Overlap prevention
-- Maintenance approval
-- Asset status transitions
+### No separate asset-status-history table
 
-### Phase 4 — Audit and communication
-
-- Audit cycles
-- Audit assignments
-- Audit items
-- Notifications
-- Activity logs
-
-### Phase 5 — Analytics
-
-- Asset availability
-- Active allocations
-- Overdue returns
-- Active bookings
-- Maintenance requests
-- Audit discrepancies
+Allocation, transfer, maintenance, audit, and activity logs already keep the important history needed for the current implementation.
 
 ---
 
-## 24. Key Database Decisions
+## 9. Why This Design Is Suitable
 
-### Why PostgreSQL?
+This design is compact enough to implement during the hackathon, but it still demonstrates:
 
-PostgreSQL provides:
+- Normalization
+- Primary and foreign keys
+- One-to-many relationships
+- Many-to-many relationships
+- Self-referencing department hierarchy
+- Transactions
+- Row locking
+- Partial unique indexes
+- Booking conflict prevention
+- Role-based access
+- Audit tracking
+- Dynamic reports
 
-- Reliable transactions
-- Row-level locking
-- Foreign-key enforcement
-- Partial indexes
-- Range types
-- Exclusion constraints
-- JSONB for audit metadata
-- Strong aggregation and reporting capabilities
+The design also matches the main AssetFlow workflow:
 
-### Why store allocation history separately?
-
-An asset may be allocated many times throughout its lifecycle. Storing allocation details inside the asset table would overwrite previous ownership information.
-
-### Why calculate overdue allocations dynamically?
-
-An overdue flag changes with time. Storing it permanently could become stale. It is safer to calculate it using the expected return date.
-
-### Why use an exclusion constraint for bookings?
-
-Application-level checks alone may fail during concurrent requests. PostgreSQL-level conflict prevention guarantees that overlapping bookings cannot be inserted.
-
-### Why use transactions?
-
-Actions such as allocation, transfer, maintenance approval and audit closure update multiple tables. Transactions guarantee that either every required update succeeds or none of them are saved.
-
----
-
-## 25. Team Ownership
-
-| Member | Responsibility |
-|---|---|
-| Afrin | PostgreSQL schema, ER diagram, repositories, constraints, transactions and analytics |
-| Ragathish | Express APIs, authentication, RBAC, service logic and validation |
-| Akshaya | React frontend, responsive UI, forms, navigation and API integration |
+```text
+Admin sets up organization
+        ↓
+Asset Manager registers asset
+        ↓
+Asset is allocated or booked
+        ↓
+Transfer, return, or maintenance is handled
+        ↓
+Audit checks the physical asset
+        ↓
+Dashboard, notifications, and logs are updated
+```
 
 ---
 
-## 26. Summary
+## 10. Summary
 
-The AssetFlow database is designed as a modular ERP foundation rather than a collection of independent CRUD tables.
+I kept the schema normalized and modular, but avoided adding tables that were not necessary for the hackathon MVP.
 
-Its important design strengths are:
+The main optimization decisions are:
 
-- Secure role assignment
-- Hierarchical departments
-- Full asset lifecycle tracking
-- Database-protected allocation conflicts
-- Database-protected booking overlaps
-- Transactional transfer and maintenance workflows
-- Structured audit cycles
-- Complete notification and activity history
-- Efficient indexing and scalable relationships
+- One central `assets` table
+- One primary role per employee
+- Separate transactional tables for history
+- Partial unique index for allocation conflict
+- Exclusion constraint for booking conflict
+- Transactions for multi-table workflows
+- Indexes for frequently searched fields
+- Live SQL queries for dashboards and reports
+
+This gives a balance between correct database design, performance, and fast implementation.
