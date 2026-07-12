@@ -1,4 +1,7 @@
 -- Drop tables if they exist
+DROP TABLE IF EXISTS resource_bookings CASCADE;
+DROP TABLE IF EXISTS transfer_requests CASCADE;
+DROP TABLE IF EXISTS asset_allocations CASCADE;
 DROP TABLE IF EXISTS employee_roles CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS assets CASCADE;
@@ -77,6 +80,161 @@ CREATE TABLE assets (
     last_audit_date DATE,
     timeline JSONB DEFAULT '[]'::jsonb
 );
+
+-- Asset Allocation History
+CREATE TABLE asset_allocations (
+    id BIGSERIAL PRIMARY KEY,
+    asset_id VARCHAR(50) NOT NULL
+        REFERENCES assets(id) ON DELETE CASCADE,
+
+    employee_id VARCHAR(50)
+        REFERENCES employees(id) ON DELETE SET NULL,
+
+    department_id VARCHAR(50)
+        REFERENCES departments(id) ON DELETE SET NULL,
+
+    allocated_by VARCHAR(50)
+        REFERENCES employees(id) ON DELETE SET NULL,
+
+    allocated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    returned_at TIMESTAMPTZ,
+
+    condition_on_issue VARCHAR(50),
+    condition_on_return VARCHAR(50),
+
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    notes TEXT,
+
+    CONSTRAINT allocation_target_required CHECK (
+        (
+            employee_id IS NOT NULL
+            AND department_id IS NULL
+        )
+        OR
+        (
+            employee_id IS NULL
+            AND department_id IS NOT NULL
+        )
+    ),
+
+    CONSTRAINT valid_allocation_status CHECK (
+        status IN ('ACTIVE', 'RETURNED', 'TRANSFERRED')
+    ),
+
+    CONSTRAINT valid_return_time CHECK (
+        returned_at IS NULL
+        OR returned_at >= allocated_at
+    )
+);
+
+-- Prevent one asset from having multiple active allocations
+CREATE UNIQUE INDEX uq_active_asset_allocation
+ON asset_allocations(asset_id)
+WHERE status = 'ACTIVE';
+
+
+-- Asset Transfer Requests
+CREATE TABLE transfer_requests (
+    id BIGSERIAL PRIMARY KEY,
+
+    asset_id VARCHAR(50) NOT NULL
+        REFERENCES assets(id) ON DELETE CASCADE,
+
+    current_allocation_id BIGINT
+        REFERENCES asset_allocations(id) ON DELETE SET NULL,
+
+    requested_by VARCHAR(50) NOT NULL
+        REFERENCES employees(id) ON DELETE RESTRICT,
+
+    to_employee_id VARCHAR(50)
+        REFERENCES employees(id) ON DELETE SET NULL,
+
+    to_department_id VARCHAR(50)
+        REFERENCES departments(id) ON DELETE SET NULL,
+
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',
+
+    approved_by VARCHAR(50)
+        REFERENCES employees(id) ON DELETE SET NULL,
+
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at TIMESTAMPTZ,
+
+    CONSTRAINT transfer_target_required CHECK (
+        (
+            to_employee_id IS NOT NULL
+            AND to_department_id IS NULL
+        )
+        OR
+        (
+            to_employee_id IS NULL
+            AND to_department_id IS NOT NULL
+        )
+    ),
+
+    CONSTRAINT valid_transfer_status CHECK (
+        status IN (
+            'REQUESTED',
+            'APPROVED',
+            'REJECTED',
+            'CANCELLED'
+        )
+    )
+);
+
+
+-- Bookable Asset Reservations
+CREATE TABLE resource_bookings (
+    id BIGSERIAL PRIMARY KEY,
+
+    asset_id VARCHAR(50) NOT NULL
+        REFERENCES assets(id) ON DELETE CASCADE,
+
+    employee_id VARCHAR(50) NOT NULL
+        REFERENCES employees(id) ON DELETE CASCADE,
+
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+
+    purpose TEXT NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at TIMESTAMPTZ,
+
+    cancelled_by VARCHAR(50)
+        REFERENCES employees(id) ON DELETE SET NULL,
+
+    CONSTRAINT valid_booking_period CHECK (
+        start_time < end_time
+    )
+);
+
+-- Prevent overlapping active bookings for the same asset
+ALTER TABLE resource_bookings
+ADD CONSTRAINT prevent_booking_overlap
+EXCLUDE USING gist (
+    asset_id WITH =,
+    tstzrange(start_time, end_time, '[)') WITH &&
+)
+WHERE (cancelled_at IS NULL);
+
+
+-- Workflow indexes
+CREATE INDEX idx_allocations_employee
+ON asset_allocations(employee_id);
+
+CREATE INDEX idx_allocations_department
+ON asset_allocations(department_id);
+
+CREATE INDEX idx_allocations_status
+ON asset_allocations(status);
+
+CREATE INDEX idx_transfer_requests_status
+ON transfer_requests(status);
+
+CREATE INDEX idx_resource_bookings_asset_time
+ON resource_bookings(asset_id, start_time, end_time);
 
 -- Indexes for performance
 CREATE INDEX idx_employees_email ON employees(email);
