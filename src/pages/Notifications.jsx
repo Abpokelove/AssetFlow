@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import NotificationItem from '../components/notifications/NotificationItem';
 import SearchBar from '../components/common/SearchBar';
 import Button from '../components/common/Button';
-import { mockNotifications } from '../utils/mockData';
+import { useNotifications } from '../context/NotificationContext';
 
 // GET  /api/notifications?page=&pageSize=&type=&read=
 // POST /api/notifications/:id/read
@@ -16,7 +16,7 @@ const TYPES = ['', 'maintenance', 'allocation', 'booking', 'audit', 'return', 's
 const PRIORITY_FILTERS = ['', 'High', 'Medium', 'Low'];
 
 export default function Notifications() {
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const { notifications, unreadCount, markRead: markNotificationRead, markAllRead: markAllNotificationsRead, deleteNotification: deleteNotificationItem } = useNotifications();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
@@ -31,22 +31,20 @@ export default function Notifications() {
     return matchSearch && matchType && matchPriority && matchRead;
   }), [notifications, search, filterType, filterPriority, filterRead]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
   const markRead = (id) => {
     // TODO: await markAsRead(id);
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    markNotificationRead(id);
   };
 
   const markAllRead = () => {
     // TODO: await markAllAsRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllNotificationsRead();
     toast.success('All notifications marked as read');
   };
 
   const deleteNotif = (id) => {
     // TODO: await deleteNotification(id);
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    deleteNotificationItem(id);
     toast.success('Notification dismissed');
   };
 
