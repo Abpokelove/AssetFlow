@@ -155,7 +155,7 @@ export default function Sidebar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={closeMobileSidebar}
-              className="fixed inset-0 bg-black/40 z-40 md:hidden"
+              className="fixed inset-0 bg-black/45 z-40 md:hidden backdrop-blur-[1px]"
             />
             {/* Drawer */}
             <motion.aside

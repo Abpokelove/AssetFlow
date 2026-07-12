@@ -26,8 +26,8 @@ const Input = forwardRef(function Input(
           ref={ref}
           id={inputId}
           className={`af-input ${icon ? 'pl-9' : ''} ${iconRight ? 'pr-9' : ''} ${
-            error ? 'border-status-lost focus:ring-status-lost/30 focus:border-status-lost' : ''
-          } ${className}`}
+            error ? 'border-status-lost focus:ring-status-lost/30 focus:border-status-lost' : 'focus:border-primary/40 focus:ring-2 focus:ring-primary/10'
+          } transition-all duration-200 ${className}`}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
           {...props}

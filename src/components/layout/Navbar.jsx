@@ -39,11 +39,11 @@ export default function Navbar() {
   };
 
   return (
-    <header className="h-14 bg-surface border-b border-border px-4 flex items-center gap-4 sticky top-0 z-30">
+    <header className="h-14 border-b border-border/70 bg-surface/90 px-4 flex items-center gap-4 sticky top-0 z-30 backdrop-blur-sm shadow-[0_1px_0_rgba(15,23,42,0.04)]">
       {/* Mobile menu button */}
       <button
         onClick={toggleMobileSidebar}
-        className="md:hidden p-2 rounded-button text-text-secondary hover:bg-background transition-colors"
+        className="md:hidden p-2 rounded-button text-text-secondary hover:bg-background hover:text-primary transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
         aria-label="Open menu"
       >
         <Menu size={20} />
@@ -62,7 +62,7 @@ export default function Navbar() {
         <div className="relative">
           <button
             onClick={() => { setShowNotifications((v) => !v); setShowUserMenu(false); }}
-            className="relative p-2 rounded-button text-text-secondary hover:bg-background hover:text-primary transition-colors"
+            className="relative p-2 rounded-button text-text-secondary hover:bg-background hover:text-primary transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
             aria-label="Notifications"
           >
             <Bell size={18} />
@@ -82,7 +82,7 @@ export default function Navbar() {
                 exit={{ opacity: 0, y: 8, scale: 0.96 }}
                 transition={{ duration: 0.15 }}
                 // Responsive positioning: use a fixed panel under the navbar on mobile so it stays visible and doesn't clip, while keeping the existing absolute dropdown on sm+ screens.
-                className="fixed left-2 right-2 top-14 z-50 overflow-hidden rounded-card border border-border bg-surface shadow-card-hover box-border sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:max-w-sm"
+                className="fixed left-2 right-2 top-14 z-50 overflow-hidden rounded-card border border-border/80 bg-surface/95 shadow-[0_14px_40px_rgba(15,23,42,0.12)] backdrop-blur-sm box-border sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:max-w-sm"
               >
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <span className="text-sm font-semibold text-text-primary">Notifications</span>
@@ -99,7 +99,7 @@ export default function Navbar() {
                   {mockNotifications.slice(0, 4).map((n) => (
                     <div
                       key={n.id}
-                      className={`px-4 py-3 transition-colors hover:bg-background ${!n.read ? 'bg-primary/5' : ''}`}
+                      className={`px-4 py-3 transition-all duration-200 hover:bg-background hover:translate-y-[1px] ${!n.read ? 'bg-primary/5' : ''}`}
                     >
                       <p className={`text-xs font-medium ${n.read ? 'text-text-primary' : 'text-primary'}`}>
                         {n.title}
@@ -118,7 +118,7 @@ export default function Navbar() {
         <div className="relative">
           <button
             onClick={() => { setShowUserMenu((v) => !v); setShowNotifications(false); }}
-            className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-button hover:bg-background transition-colors"
+            className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-button hover:bg-background hover:translate-y-[1px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
           >
             <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">
               {getInitials(user?.name || 'U')}
@@ -136,7 +136,7 @@ export default function Navbar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.96 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 w-52 bg-surface rounded-card shadow-card-hover border border-border z-50"
+                className="absolute right-0 top-full mt-2 w-52 rounded-card border border-border/80 bg-surface/95 shadow-[0_14px_40px_rgba(15,23,42,0.12)] backdrop-blur-sm z-50"
               >
                 <div className="px-4 py-3 border-b border-border">
                   <p className="text-sm font-semibold text-text-primary">{user?.name}</p>
@@ -147,14 +147,14 @@ export default function Navbar() {
                   <Link
                     to="/profile"
                     onClick={() => setShowUserMenu(false)}
-                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-secondary hover:bg-background hover:text-text-primary transition-colors"
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-text-secondary hover:bg-background hover:text-text-primary transition-all duration-200"
                   >
                     <UserCircle size={15} />
                     My Profile
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-status-lost hover:bg-background transition-colors"
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-status-lost hover:bg-background transition-all duration-200"
                   >
                     <LogOut size={15} />
                     Sign Out

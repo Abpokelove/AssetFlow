@@ -56,7 +56,7 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className={`relative z-10 w-full ${sizeMap[size]} bg-surface rounded-card shadow-card-hover border border-border flex flex-col max-h-[90vh] ${className}`}
+            className={`relative z-10 w-full ${sizeMap[size]} bg-surface/95 rounded-card shadow-[0_20px_60px_rgba(15,23,42,0.16)] border border-border/80 flex flex-col max-h-[90vh] backdrop-blur-sm ${className}`}
           >
             {/* Header */}
             {title && (
@@ -64,7 +64,7 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
                 <h2 className="text-base font-bold text-text-primary">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-button text-text-secondary hover:bg-background hover:text-text-primary transition-colors"
+                  className="p-1.5 rounded-button text-text-secondary hover:bg-background hover:text-text-primary transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
                   aria-label="Close modal"
                 >
                   <X size={16} />
