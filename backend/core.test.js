@@ -63,8 +63,16 @@ test.before(async () => {
         const found = mockStore.departments.find(d => d.name.toLowerCase() === params[0].toLowerCase());
         return { rows: found ? [found] : [] };
       }
+      if (sql.includes("from departments") && sql.includes("where id = $1")) {
+        const found = mockStore.departments.find(d => d.id === params[0]);
+        return { rows: found ? [found] : [] };
+      }
       if (sql.includes("where name = $1") && sql.includes("asset_categories")) {
         const found = mockStore.categories.find(c => c.name.toLowerCase() === params[0].toLowerCase());
+        return { rows: found ? [found] : [] };
+      }
+      if (sql.includes("from asset_categories") && sql.includes("where id = $1")) {
+        const found = mockStore.categories.find(c => c.id === params[0]);
         return { rows: found ? [found] : [] };
       }
       if (sql.includes("where tag = $1")) {
@@ -86,6 +94,42 @@ test.before(async () => {
       if (sql.includes("from assets") && sql.includes("where id = $1")) {
         const found = mockStore.assets.find(a => a.id === params[0]);
         return { rows: found ? [found] : [] };
+      }
+      if (sql.startsWith("update assets")) {
+        const id = params[params.length - 1];
+        const found = mockStore.assets.find(a => a.id === id);
+        if (!found) return { rows: [] };
+        if (sql.includes("status = $1")) found.status = params[0];
+        if (sql.includes("timeline = $2")) found.timeline = JSON.parse(params[1]);
+        return { rows: [found] };
+      }
+      if (sql.startsWith("update departments")) {
+        const id = params[params.length - 1];
+        const found = mockStore.departments.find(d => d.id === id);
+        if (!found) return { rows: [] };
+        if (sql.includes("name = $1")) found.name = params[0];
+        if (sql.includes("manager = $1")) found.manager = params[0];
+        if (sql.includes("manager = $2")) found.manager = params[1];
+        return { rows: [found] };
+      }
+      if (sql.startsWith("update asset_categories")) {
+        const id = params[params.length - 1];
+        const found = mockStore.categories.find(c => c.id === id);
+        if (!found) return { rows: [] };
+        if (sql.includes("name = $1")) found.name = params[0];
+        if (sql.includes("description = $1")) found.description = params[0];
+        if (sql.includes("description = $2")) found.description = params[1];
+        if (sql.includes("icon = $1")) found.icon = params[0];
+        if (sql.includes("icon = $2")) found.icon = params[1];
+        if (sql.includes("icon = $3")) found.icon = params[2];
+        return { rows: [found] };
+      }
+      if (sql.startsWith("update employees")) {
+        const id = params[params.length - 1];
+        const found = mockStore.employees.find(e => e.id === id);
+        if (!found) return { rows: [] };
+        if (sql.includes("status = $1")) found.status = params[0];
+        return { rows: [found] };
       }
 
       // General query matches
