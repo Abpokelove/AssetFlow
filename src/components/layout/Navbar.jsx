@@ -4,7 +4,7 @@ import { Bell, Menu, Search, LogOut, UserCircle, ChevronDown } from 'lucide-reac
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { mockNotifications } from '../../utils/mockData';
+import { useNotifications } from '../../context/NotificationContext';
 import { getInitials, timeAgo } from '../../utils/helpers';
 
 // Breadcrumb path map
@@ -24,6 +24,7 @@ const PATH_LABELS = {
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { toggleMobileSidebar } = useTheme();
+  const { notifications, unreadCount } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -31,7 +32,6 @@ export default function Navbar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const pageTitle = PATH_LABELS[location.pathname] || 'AssetFlow';
-  const unreadCount = mockNotifications.filter((n) => !n.read).length;
 
   const handleLogout = async () => {
     await logout();
@@ -96,7 +96,7 @@ export default function Navbar() {
                 </div>
                 {/* Responsive height: give the list more room on mobile/tablet before scrolling, while preserving the familiar desktop height. */}
                 <div className="max-h-[60vh] overflow-y-auto overflow-x-hidden divide-y divide-border sm:max-h-72">
-                  {mockNotifications.slice(0, 4).map((n) => (
+                  {notifications.slice(0, 4).map((n) => (
                     <div
                       key={n.id}
                       className={`px-4 py-3 transition-all duration-200 hover:bg-background hover:translate-y-[1px] ${!n.read ? 'bg-primary/5' : ''}`}
