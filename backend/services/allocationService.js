@@ -1,100 +1,105 @@
-const dashboardRepository = require("../repositories/dashboardRepository");
+const allocationRepository = require("../repositories/allocationRepository");
 
-const toDate = (value) => {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+const assertOneTarget = ({ employeeId, departmentId }, employeeField = "employeeId", departmentField = "departmentId") => {
+  const hasEmployee = Boolean(employeeId);
+  const hasDepartment = Boolean(departmentId);
+
+  if (hasEmployee === hasDepartment) {
+    const error = new Error(`Provide exactly one of ${employeeField} or ${departmentField}`);
+    error.statusCode = 400;
+    throw error;
+  }
 };
 
-const toIsoDate = (value) => {
-  const date = toDate(value);
-  return date ? date.toISOString().slice(0, 10) : null;
-};
-
-const getTimeline = (asset) => (Array.isArray(asset.timeline) ? asset.timeline : []);
-
-const getAllocationEvent = (asset) =>
-  [...getTimeline(asset)].reverse().find((entry) => entry.status === "Allocated" || /allocat/i.test(entry.note || ""));
-
-const buildAllocation = (asset) => {
-  const allocationEvent = getAllocationEvent(asset);
-
-  return {
-    id: `alc-${asset.id}`,
-    assetId: asset.id,
-    assetName: asset.name,
-    assetTag: asset.tag,
-    employeeId: asset.assignedToId || null,
-    employeeName: asset.assignedTo || asset.department || "Unassigned",
-    department: asset.department || "",
-    allocatedDate: toIsoDate(allocationEvent?.date || asset.registeredDate),
-    expectedReturn: toIsoDate(asset.warrantyExpiry),
-    returnedDate: null,
-    allocatedBy: allocationEvent?.by || "System",
-    status: "Active",
-    notes: "Derived from current asset assignment",
-  };
-};
-
-const getActiveAllocations = async () => {
-  const assets = await dashboardRepository.findAssetsForDashboard();
-  return assets
-    .filter((asset) => asset.status === "Allocated")
-    .map(buildAllocation);
-};
+const getActor = (user = {}) => ({
+  id: user.id,
+  name: user.name || "System",
+});
 
 const allocationService = {
-  async getAllocations({ page = 1, pageSize = 10, status, department, search } = {}) {
-    let allocations = await getActiveAllocations();
-
-    if (status) {
-      allocations = allocations.filter((allocation) => allocation.status === status);
-    }
-
-    if (department) {
-      allocations = allocations.filter((allocation) => allocation.department === department);
-    }
-
-    if (search) {
-      const needle = search.toLowerCase();
-      allocations = allocations.filter((allocation) =>
-        [allocation.assetName, allocation.assetTag, allocation.employeeName, allocation.department]
-          .some((value) => (value || "").toLowerCase().includes(needle))
-      );
-    }
-
-    const total = allocations.length;
-    const start = (page - 1) * pageSize;
-    return {
-      data: allocations.slice(start, start + pageSize),
-      total,
-      page,
-      pageSize,
-    };
+  async getAllocations(params) {
+    return allocationRepository.findFiltered(params);
   },
 
   async getAllocationById(id) {
-    const allocations = await getActiveAllocations();
-    const allocation = allocations.find((item) => item.id === id);
-
+    const allocation = await allocationRepository.findById(id);
     if (!allocation) {
       const error = new Error("Allocation not found");
       error.statusCode = 404;
       throw error;
     }
-
     return allocation;
   },
 
-  async getOverdueAllocations() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const allocations = await getActiveAllocations();
+  async allocateAsset(data, user) {
+    assertOneTarget(data);
 
-    return allocations.filter((allocation) => {
-      const expectedReturn = toDate(allocation.expectedReturn);
-      return expectedReturn && expectedReturn < today;
+    if (!data.assetId) {
+      const error = new Error("Asset is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const conflicts = await allocationRepository.findConflicts({ assetId: data.assetId });
+    if (conflicts.length > 0) {
+      const error = new Error("Asset already has an active allocation");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    return allocationRepository.allocate({
+      assetId: data.assetId,
+      employeeId: data.employeeId,
+      departmentId: data.departmentId,
+      conditionOnIssue: data.conditionOnIssue,
+      notes: data.notes,
+      actor: getActor(user),
     });
+  },
+
+  async transferAsset(id, data, user) {
+    const normalized = {
+      newEmployeeId: data.newEmployeeId,
+      newDepartmentId: data.newDepartmentId,
+      employeeId: data.newEmployeeId,
+      departmentId: data.newDepartmentId,
+    };
+    assertOneTarget(normalized, "newEmployeeId", "newDepartmentId");
+
+    return allocationRepository.transfer(id, {
+      newEmployeeId: data.newEmployeeId,
+      newDepartmentId: data.newDepartmentId,
+      reason: data.reason,
+      notes: data.notes,
+      actor: getActor(user),
+    });
+  },
+
+  async returnAsset(id, data, user) {
+    return allocationRepository.returnAllocation(id, {
+      condition: data.condition,
+      notes: data.notes,
+      returnedDate: data.returnedDate,
+      actor: getActor(user),
+    });
+  },
+
+  async checkConflicts(params) {
+    if (!params.assetId) {
+      const error = new Error("Asset is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const conflictingAllocations = await allocationRepository.findConflicts(params);
+    return {
+      hasConflict: conflictingAllocations.length > 0,
+      conflictingAllocations,
+    };
+  },
+
+  async getOverdueAllocations() {
+    return allocationRepository.findOverdue();
   },
 };
 
