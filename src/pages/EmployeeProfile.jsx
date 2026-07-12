@@ -8,12 +8,13 @@ import {
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
-import { mockAllocations, mockNotifications } from '../utils/mockData';
+import { mockAllocations } from '../utils/mockData';
 import { getInitials, formatDate, timeAgo } from '../utils/helpers';
 
 // GET /api/auth/me             → User profile
@@ -23,6 +24,7 @@ import { getInitials, formatDate, timeAgo } from '../utils/helpers';
 
 export default function EmployeeProfile() {
   const { user, logout, updateProfile } = useAuth();
+  const { notifications } = useNotifications();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -32,7 +34,7 @@ export default function EmployeeProfile() {
   });
 
   const myAllocations = mockAllocations.filter((a) => a.employeeId === user?.id && a.status === 'Active');
-  const myNotifications = mockNotifications.slice(0, 4);
+  const myNotifications = notifications.slice(0, 4);
 
   const handleUpdate = async (data) => {
     setProfileLoading(true);
@@ -69,7 +71,7 @@ export default function EmployeeProfile() {
           <h1 className="af-page-title">My Profile</h1>
           <p className="af-page-subtitle">View and manage your account details</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" icon={<Pencil size={14} />} onClick={() => setEditOpen(true)}>Edit Profile</Button>
           <Button variant="danger" icon={<LogOut size={14} />} onClick={handleLogout}>Sign Out</Button>
         </div>

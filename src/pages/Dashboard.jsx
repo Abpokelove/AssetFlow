@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import KPICard from '../components/dashboard/KPICard';
 import ActivityCard from '../components/dashboard/ActivityCard';
 import NotificationCard from '../components/dashboard/NotificationCard';
@@ -14,7 +15,7 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
 import {
-  mockDashboardKPIs, mockRecentActivity, mockNotifications,
+  mockDashboardKPIs, mockRecentActivity,
   mockAssetsByStatus, mockMonthlyActivity, mockAllocations,
 } from '../utils/mockData';
 import { formatDate } from '../utils/helpers';
@@ -46,6 +47,7 @@ const CustomPieTooltip = ({ active, payload }) => {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { notifications, unreadCount } = useNotifications();
   const navigate = useNavigate();
   const kpis = mockDashboardKPIs;
 
@@ -152,11 +154,11 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-text-primary">Notifications</h3>
             <span className="text-xs font-bold text-white bg-secondary px-2 py-0.5 rounded-full">
-              {mockNotifications.filter((n) => !n.read).length} new
+              {unreadCount} new
             </span>
           </div>
           <div className="space-y-1">
-            {mockNotifications.slice(0, 4).map((n) => (
+            {notifications.slice(0, 4).map((n) => (
               <NotificationCard key={n.id} notification={n} />
             ))}
           </div>

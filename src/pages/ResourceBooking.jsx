@@ -123,8 +123,8 @@ export default function ResourceBooking() {
       </div>
 
       {/* View toggle */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex border border-border rounded-button overflow-hidden">
+      <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center">
+        <div className="flex border border-border rounded-button overflow-hidden self-start">
           <button onClick={() => setView('calendar')} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'calendar' ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background'}`}>
             <CalendarDays size={13} />Calendar
           </button>
@@ -134,11 +134,11 @@ export default function ResourceBooking() {
         </div>
         {view === 'list' && (
           <>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search bookings…" className="w-64" />
-            <div className="flex gap-2 ml-auto">
+            <SearchBar value={search} onChange={setSearch} placeholder="Search bookings…" className="w-full sm:w-64" />
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
               {['', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'].map((s) => (
                 <button key={s || 'all'} onClick={() => setFilterStatus(s)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all hidden sm:block ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}>
+                  className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}>
                   {s || 'All'}
                 </button>
               ))}

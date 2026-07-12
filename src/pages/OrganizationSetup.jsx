@@ -77,17 +77,17 @@ export default function OrganizationSetup() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-border/60 rounded-button w-fit mb-6">
+      <div className="flex flex-wrap gap-1 p-1 bg-border/60 rounded-button w-full sm:w-fit mb-6">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => { setActiveTab(key); setSearch(''); }}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-[8px] transition-all duration-200 ${
+            className={`flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-[8px] transition-all duration-200 ${
               activeTab === key ? 'bg-surface text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
             <Icon size={15} />
-            <span className="hidden sm:inline">{label}</span>
+            <span>{label}</span>
           </button>
         ))}
       </div>
