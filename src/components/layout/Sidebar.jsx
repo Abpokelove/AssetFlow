@@ -126,15 +126,15 @@ export default function Sidebar() {
       <motion.aside
         animate={{ width: sidebarCollapsed ? 64 : 220 }}
         transition={{ duration: 0.25, ease: 'easeInOut' }}
-        className="hidden md:flex flex-col bg-primary h-screen sticky top-0 shadow-sidebar flex-shrink-0 overflow-hidden"
+        className="hidden md:flex flex-col bg-primary h-screen sticky top-0 shadow-sidebar flex-shrink-0 overflow-visible relative"
       >
         <SidebarContent collapsed={sidebarCollapsed} />
 
         {/* Collapse Toggle */}
         <button
           onClick={toggleSidebar}
-          className="absolute top-5 -right-3 w-6 h-6 rounded-full bg-primary border-2 border-background
-                     flex items-center justify-center text-white hover:bg-primary-hover transition-colors z-10"
+          className="absolute top-5 right-3 w-7 h-7 rounded-full bg-primary border-2 border-background
+                     flex items-center justify-center text-white hover:bg-primary-hover transition-colors z-20"
           aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed
