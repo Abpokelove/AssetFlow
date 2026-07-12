@@ -9,6 +9,7 @@ let server;
 let port;
 let baseUrl;
 let authToken;
+let employeeToken;
 
 // In-memory data store for fallback mock mode
 const mockStore = {
@@ -37,6 +38,11 @@ test.before(async () => {
   const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
   authToken = jwt.sign(
     { id: "emp-001", name: "Sarah Mitchell", email: "sarah.m@acme.com", role: "Asset Manager" },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+  employeeToken = jwt.sign(
+    { id: "emp-004", name: "Raj Sharma", email: "raj.s@acme.com", role: "Employee" },
     JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -268,4 +274,69 @@ test("POST /api/assets registers new asset", async () => {
   assert.equal(data.name, "MacBook Pro M3");
   assert.equal(data.status, "Available");
   assert.ok(data.id.startsWith("ast-"));
+});
+
+test("GET /api/reports/summary returns dashboard KPI data", async () => {
+  const res = await fetch(`${baseUrl}/reports/summary`, {
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(typeof data.totalAssets, "number");
+  assert.equal(typeof data.availableAssets, "number");
+  assert.equal(typeof data.activeBookings, "number");
+  assert.equal(data.activeBookings, data.activebookings);
+});
+
+test("GET /api/reports/assets-by-status returns chart data", async () => {
+  const res = await fetch(`${baseUrl}/reports/assets-by-status`, {
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.ok(Array.isArray(data));
+  assert.ok(data.some((item) => item.name === "Available"));
+});
+
+test("GET /api/notifications returns paged notifications", async () => {
+  const res = await fetch(`${baseUrl}/notifications?pageSize=4`, {
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.ok(Array.isArray(data.data));
+  assert.equal(typeof data.total, "number");
+  assert.equal(typeof data.unreadCount, "number");
+});
+
+test("GET /api/allocations/overdue returns allocation list", async () => {
+  const res = await fetch(`${baseUrl}/allocations/overdue`, {
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.ok(Array.isArray(data));
+});
+
+test("POST /api/assets rejects users without manager role", async () => {
+  const res = await fetch(`${baseUrl}/assets`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${employeeToken}`
+    },
+    body: JSON.stringify({
+      tag: "AF-LAPT-9999",
+      name: "Unauthorized Laptop",
+      category: "IT Equipment",
+      purchaseDate: "2024-05-01",
+      purchaseValue: 1000
+    })
+  });
+
+  assert.equal(res.status, 403);
 });

@@ -111,6 +111,63 @@ const assetRepository = {
     return res.rows[0];
   },
 
+  async update(id, data) {
+    const fieldMap = {
+      tag: "tag",
+      name: "name",
+      category: "category",
+      status: "status",
+      condition: "condition",
+      department: "department",
+      assignedTo: "assigned_to",
+      assignedToId: "assigned_to_id",
+      purchaseDate: "purchase_date",
+      purchaseValue: "purchase_value",
+      currentValue: "current_value",
+      location: "location",
+      serialNumber: "serial_number",
+      description: "description",
+      warrantyExpiry: "warranty_expiry",
+      lastAuditDate: "last_audit_date",
+      timeline: "timeline",
+    };
+    const assignments = [];
+    const params = [];
+
+    Object.entries(fieldMap).forEach(([key, column]) => {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        params.push(key === "timeline" ? JSON.stringify(data[key] || []) : data[key]);
+        assignments.push(`${column} = $${params.length}`);
+      }
+    });
+
+    if (assignments.length === 0) {
+      return this.findById(id);
+    }
+
+    params.push(id);
+    const res = await db.query(
+      `UPDATE assets
+       SET ${assignments.join(", ")}
+       WHERE id = $${params.length}
+       RETURNING
+        id, tag, name, category, status, condition, department,
+        assigned_to AS "assignedTo", assigned_to_id AS "assignedToId",
+        purchase_date AS "purchaseDate", purchase_value AS "purchaseValue",
+        current_value AS "currentValue", location, serial_number AS "serialNumber",
+        description, warranty_expiry AS "warrantyExpiry",
+        registered_date AS "registeredDate", last_audit_date AS "lastAuditDate",
+        timeline`,
+      params
+    );
+    return res.rows[0];
+  },
+
+  async delete(id) {
+    const res = await db.query("DELETE FROM assets WHERE id = $1 RETURNING id", [id]);
+    return res.rows[0];
+  },
+
   async create(data) {
     const {
       tag,
