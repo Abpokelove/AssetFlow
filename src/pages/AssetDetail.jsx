@@ -1,18 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Pencil, QrCode, Clock, MapPin, Tag,
-  Calendar, DollarSign, User, Wrench, Package, Shield,
+  Calendar, DollarSign, User, Package, Shield,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { mockAssets } from '../utils/mockData';
 import AssetStatusTimeline from '../components/asset/AssetStatusTimeline';
 import AssetForm from '../components/asset/AssetForm';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
+import { getAssetById, getAssetTimeline, updateAsset } from '../services/api/assetService';
+import { apiErrorMessage, unwrapData } from '../services/api/responseUtils';
 import { formatDate, formatCurrency } from '../utils/helpers';
 
 // GET /api/assets/:id  → Asset (full with timeline)
@@ -23,14 +24,53 @@ export default function AssetDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
-  const [assets, setAssets] = useState(mockAssets);
+  const [asset, setAsset] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
 
-  const asset = assets.find((a) => a.id === id);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAsset = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [assetRes, timelineRes] = await Promise.all([
+          getAssetById(id),
+          getAssetTimeline(id),
+        ]);
+        if (cancelled) return;
+        const assetData = unwrapData(assetRes, null);
+        setAsset(assetData);
+        setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : assetData?.timeline || []);
+      } catch (err) {
+        if (!cancelled) setError(apiErrorMessage(err, 'Unable to load asset details'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadAsset();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="af-page text-center py-16">
+        <p className="text-text-muted">Loading asset...</p>
+      </div>
+    );
+  }
 
   if (!asset) {
     return (
       <div className="af-page text-center py-16">
-        <p className="text-text-muted">Asset not found.</p>
+        <p className="text-text-muted">{error || 'Asset not found.'}</p>
         <Button variant="ghost" onClick={() => navigate('/assets')} className="mt-4" icon={<ArrowLeft size={15} />}>
           Back to Assets
         </Button>
@@ -39,10 +79,17 @@ export default function AssetDetail() {
   }
 
   const handleUpdate = async (data) => {
-    // TODO: await updateAsset(asset.id, data);
-    setAssets((prev) => prev.map((a) => a.id === id ? { ...a, ...data } : a));
-    toast.success('Asset updated');
-    setEditOpen(false);
+    setFormLoading(true);
+    try {
+      const response = await updateAsset(asset.id, data);
+      setAsset(unwrapData(response, asset));
+      toast.success('Asset updated');
+      setEditOpen(false);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to update asset'));
+    } finally {
+      setFormLoading(false);
+    }
   };
 
   const DetailRow = ({ icon: Icon, label, value }) => (
@@ -155,14 +202,14 @@ export default function AssetDetail() {
               <Clock size={15} className="text-primary" />
               <h2 className="text-sm font-bold text-text-primary">Status Timeline</h2>
             </div>
-            <AssetStatusTimeline timeline={asset.timeline || []} />
+            <AssetStatusTimeline timeline={timeline || asset.timeline || []} />
           </Card>
         </div>
       </div>
 
       {/* Edit Modal */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Asset" size="lg">
-        <AssetForm defaultValues={asset} onSubmit={handleUpdate} onCancel={() => setEditOpen(false)} />
+        <AssetForm defaultValues={asset} onSubmit={handleUpdate} onCancel={() => setEditOpen(false)} loading={formLoading} />
       </Modal>
     </div>
   );

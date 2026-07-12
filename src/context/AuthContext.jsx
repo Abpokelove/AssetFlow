@@ -1,88 +1,102 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-
-/**
- * AuthContext
- * -----------
- * Provides authentication state across the application.
- * Backend team: replace the mock login/logout with real API calls.
- *
- * Expected POST /api/auth/login  → { token, user }
- * Expected POST /api/auth/logout → 204
- * Expected GET  /api/auth/me     → { user }
- */
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { getCurrentUser, loginUser, registerUser } from '../services/api/authService';
+import { apiErrorMessage } from '../services/api/responseUtils';
 
 const AuthContext = createContext(null);
 
-// Mock user — backend team will replace with JWT/session
-const MOCK_USER = {
-  id: 'emp-001',
-  name: 'Akshaya',
-  email: 'akshayavinothkumar@gmail.com',
-  role: 'Asset Manager',
-  department: 'IT Operations',
-  avatar: null,
-  employeeId: 'EMP-001',
+const readStoredUser = () => {
+  try {
+    const stored = localStorage.getItem('af_user');
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const persistUser = (nextUser) => {
+  localStorage.setItem('af_user', JSON.stringify(nextUser));
 };
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    // Persist login state across page reloads (localStorage mock)
-    try {
-      const stored = localStorage.getItem('af_user');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(readStoredUser);
   const [isLoading, setIsLoading] = useState(false);
 
-  /**
-   * login(email, password)
-   * Backend: POST /api/auth/login { email, password }
-   * Returns: { token: string, user: User }
-   */
-  const login = useCallback(async (email, _password) => {
+  useEffect(() => {
+    const token = localStorage.getItem('af_token');
+    if (!token || user) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+    getCurrentUser()
+      .then((res) => {
+        if (cancelled) return;
+        const currentUser = res.data?.user || res.data;
+        persistUser(currentUser);
+        setUser(currentUser);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem('af_token');
+        localStorage.removeItem('af_user');
+        setUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const login = useCallback(async (email, password) => {
     setIsLoading(true);
     try {
-      // TODO: replace with → const { data } = await axios.post('/api/auth/login', { email, password });
-      await new Promise((r) => setTimeout(r, 800)); // simulate network
-      const loggedInUser = { ...MOCK_USER, email };
-      localStorage.setItem('af_user', JSON.stringify(loggedInUser));
-      setUser(loggedInUser);
-      return { success: true, user: loggedInUser };
+      const { data } = await loginUser({ email, password });
+      if (data.token) {
+        localStorage.setItem('af_token', data.token);
+      }
+      persistUser(data.user);
+      setUser(data.user);
+      window.dispatchEvent(new Event('assetflow-auth-changed'));
+      return { success: true, user: data.user };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: apiErrorMessage(err, 'Invalid email or password') };
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  /**
-   * logout()
-   * Backend: POST /api/auth/logout
-   */
-  const logout = useCallback(async () => {
-    // TODO: await axios.post('/api/auth/logout');
-    localStorage.removeItem('af_user');
-    setUser(null);
+  const signup = useCallback(async ({ name, email, password }) => {
+    setIsLoading(true);
+    try {
+      const { data } = await registerUser({ name, email, password });
+      return { success: true, user: data.user || data };
+    } catch (err) {
+      return { success: false, error: apiErrorMessage(err, 'Unable to create account') };
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  /**
-   * updateProfile(data)
-   * Backend: PUT /api/auth/me { name, ... }
-   */
+  const logout = useCallback(async () => {
+    localStorage.removeItem('af_token');
+    localStorage.removeItem('af_user');
+    setUser(null);
+    window.dispatchEvent(new Event('assetflow-auth-changed'));
+  }, []);
+
   const updateProfile = useCallback(async (data) => {
-    // TODO: const { data: updated } = await axios.put('/api/auth/me', data);
     const updated = { ...user, ...data };
-    localStorage.setItem('af_user', JSON.stringify(updated));
+    persistUser(updated);
     setUser(updated);
     return updated;
   }, [user]);
 
-  const isAuthenticated = Boolean(user);
+  const isAuthenticated = Boolean(user && localStorage.getItem('af_token'));
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, signup, logout, updateProfile, setUser }}>
       {children}
     </AuthContext.Provider>
   );

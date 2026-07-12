@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -9,8 +9,15 @@ import ChartContainer from '../components/reports/ChartContainer';
 import HeatMapPlaceholder from '../components/reports/HeatMapPlaceholder';
 import Button from '../components/common/Button';
 import {
-  mockAssetsByCategory, mockAssetsByStatus, mockMonthlyActivity, mockDepartmentUtilization,
-} from '../utils/mockData';
+  exportReport,
+  getAssetsByCategory,
+  getAssetsByStatus,
+  getDashboardSummary,
+  getDepartmentUtilization,
+  getMonthlyActivity,
+} from '../services/api/reportService';
+import { apiErrorMessage, downloadResponseBlob, unwrapList } from '../services/api/responseUtils';
+import toast from 'react-hot-toast';
 
 // GET /api/reports/summary
 // GET /api/reports/assets-by-category
@@ -41,14 +48,63 @@ const EXPORT_TYPES = ['Assets', 'Allocations', 'Maintenance', 'Audit'];
 
 export default function Reports() {
   const [exportLoading, setExportLoading] = useState(false);
+  const [summary, setSummary] = useState({});
+  const [assetsByStatus, setAssetsByStatus] = useState([]);
+  const [assetsByCategory, setAssetsByCategory] = useState([]);
+  const [monthlyActivity, setMonthlyActivity] = useState([]);
+  const [departmentUtilization, setDepartmentUtilization] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReports = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [summaryRes, statusRes, categoryRes, monthlyRes, departmentRes] = await Promise.all([
+          getDashboardSummary(),
+          getAssetsByStatus(),
+          getAssetsByCategory(),
+          getMonthlyActivity({ months: 7 }),
+          getDepartmentUtilization(),
+        ]);
+        if (cancelled) return;
+        setSummary(summaryRes.data || {});
+        setAssetsByStatus(unwrapList(statusRes));
+        setAssetsByCategory(unwrapList(categoryRes));
+        setMonthlyActivity(unwrapList(monthlyRes));
+        setDepartmentUtilization(unwrapList(departmentRes));
+      } catch (err) {
+        if (!cancelled) setError(apiErrorMessage(err, 'Unable to load report data'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadReports();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleExport = async (type) => {
     setExportLoading(true);
-    // TODO: const blob = await exportReport({ type: type.toLowerCase(), format: 'csv' });
-    // TODO: downloadFile(blob, `${type}-report.csv`);
-    await new Promise((r) => setTimeout(r, 800));
-    setExportLoading(false);
+    try {
+      const response = await exportReport({ type: type.toLowerCase(), format: 'csv' });
+      downloadResponseBlob(response, `${type.toLowerCase()}-report.csv`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Report export API is not available'));
+    } finally {
+      setExportLoading(false);
+    }
   };
+
+  const averageUtilization = departmentUtilization.length
+    ? Math.round(departmentUtilization.reduce((sum, item) => sum + Number(item.utilization || 0), 0) / departmentUtilization.length)
+    : null;
 
   return (
     <div className="af-page max-w-screen-2xl mx-auto">
@@ -67,13 +123,20 @@ export default function Reports() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-5 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <p className="text-sm font-semibold text-status-lost">Unable to load reports</p>
+          <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+        </div>
+      )}
+
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Total Asset Value', value: '$892,450', sub: 'Purchase value' },
-          { label: 'Current Value', value: '$724,200', sub: 'After depreciation' },
-          { label: 'Avg Utilization', value: '73%', sub: 'Across departments' },
-          { label: 'Maintenance Cost', value: '$14,320', sub: 'YTD 2024' },
+          { label: 'Total Asset Value', value: summary.totalPurchaseValue != null ? `$${Number(summary.totalPurchaseValue).toLocaleString()}` : 'N/A', sub: 'Purchase value' },
+          { label: 'Current Value', value: summary.totalCurrentValue != null ? `$${Number(summary.totalCurrentValue).toLocaleString()}` : 'N/A', sub: 'Current asset value' },
+          { label: 'Avg Utilization', value: averageUtilization != null ? `${averageUtilization}%` : 'N/A', sub: 'Across departments' },
+          { label: 'Maintenance Cost', value: 'N/A', sub: 'No backend endpoint yet' },
         ].map((item) => (
           <div key={item.label} className="bg-surface rounded-card border border-border p-4">
             <p className="text-xs text-text-muted">{item.label}</p>
@@ -93,8 +156,8 @@ export default function Reports() {
         >
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
-              <Pie data={mockAssetsByStatus} cx="50%" cy="50%" outerRadius={95} innerRadius={55} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                {mockAssetsByStatus.map((entry, i) => (
+              <Pie data={assetsByStatus} cx="50%" cy="50%" outerRadius={95} innerRadius={55} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                {assetsByStatus.map((entry, i) => (
                   <Cell key={entry.name} fill={entry.color || PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
@@ -111,7 +174,7 @@ export default function Reports() {
           action={<BarChart3 size={16} className="text-text-muted" />}
         >
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={mockAssetsByCategory} layout="vertical" barSize={12}>
+            <BarChart data={assetsByCategory} layout="vertical" barSize={12}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1E5DD" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} tickLine={false} width={100} />
@@ -131,7 +194,7 @@ export default function Reports() {
           action={<TrendingUp size={16} className="text-text-muted" />}
         >
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={mockMonthlyActivity} barSize={10} barGap={4}>
+            <BarChart data={monthlyActivity} barSize={10} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1E5DD" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} width={28} />
@@ -151,7 +214,7 @@ export default function Reports() {
           action={<TrendingUp size={16} className="text-text-muted" />}
         >
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={mockDepartmentUtilization}>
+            <LineChart data={departmentUtilization}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1E5DD" vertical={false} />
               <XAxis dataKey="dept" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} unit="%" width={36} domain={[0, 100]} />
@@ -162,7 +225,7 @@ export default function Reports() {
 
           {/* Color-coded bars */}
           <div className="mt-4 space-y-2">
-            {mockDepartmentUtilization.map(({ dept, utilization }) => (
+            {departmentUtilization.map(({ dept, utilization }) => (
               <div key={dept} className="flex items-center gap-2">
                 <span className="text-xs text-text-secondary w-20 flex-shrink-0">{dept}</span>
                 <div className="flex-1 h-2 bg-border rounded-full overflow-hidden">
@@ -180,6 +243,9 @@ export default function Reports() {
               </div>
             ))}
           </div>
+          {!loading && departmentUtilization.length === 0 && (
+            <p className="mt-4 text-xs text-text-muted">No department utilization data available.</p>
+          )}
         </ChartContainer>
       </div>
 

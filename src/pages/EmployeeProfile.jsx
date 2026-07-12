@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
 import {
@@ -14,7 +14,10 @@ import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import StatusBadge from '../components/common/StatusBadge';
 import Modal from '../components/common/Modal';
-import { mockAllocations } from '../utils/mockData';
+import { getAllocations } from '../services/api/allocationService';
+import { getCurrentUser } from '../services/api/authService';
+import { getEmployeeById, updateEmployee } from '../services/api/organizationService';
+import { apiErrorMessage, unwrapData, unwrapPage } from '../services/api/responseUtils';
 import { getInitials, formatDate, timeAgo } from '../utils/helpers';
 
 // GET /api/auth/me             → User profile
@@ -28,22 +31,72 @@ export default function EmployeeProfile() {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profile, setProfile] = useState(user);
+  const [myAllocations, setMyAllocations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
-    defaultValues: { name: user?.name, email: user?.email, role: user?.role, department: user?.department },
+  const { register, handleSubmit, formState: { errors }, reset } = useForm({
+    defaultValues: { name: profile?.name, email: profile?.email, role: profile?.role, department: profile?.department },
   });
 
-  const myAllocations = mockAllocations.filter((a) => a.employeeId === user?.id && a.status === 'Active');
   const myNotifications = notifications.slice(0, 4);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const currentRes = await getCurrentUser();
+        const currentUser = currentRes.data?.user || currentRes.data || user;
+        const [employeeRes, allocationRes] = await Promise.all([
+          getEmployeeById(currentUser.id),
+          getAllocations({ pageSize: 100 }),
+        ]);
+        if (cancelled) return;
+
+        const employee = unwrapData(employeeRes, currentUser);
+        setProfile(employee);
+        reset({
+          name: employee?.name,
+          email: employee?.email,
+          role: employee?.role,
+          department: employee?.department,
+        });
+        setMyAllocations(unwrapPage(allocationRes).data.filter((allocation) => allocation.employeeId === currentUser.id && allocation.status === 'Active'));
+      } catch (err) {
+        if (!cancelled) {
+          setError(apiErrorMessage(err, 'Unable to load profile'));
+          setProfile(user);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    if (user?.id) loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reset, user]);
 
   const handleUpdate = async (data) => {
     setProfileLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    // TODO: const updated = await axios.put('/api/auth/me', data);
-    await updateProfile(data);
-    toast.success('Profile updated');
-    setProfileLoading(false);
-    setEditOpen(false);
+    try {
+      const response = await updateEmployee(profile.id, data);
+      const updated = unwrapData(response, { ...profile, ...data });
+      setProfile(updated);
+      await updateProfile(updated);
+      toast.success('Profile updated');
+      setEditOpen(false);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to update profile'));
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -78,27 +131,33 @@ export default function EmployeeProfile() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {error && (
+          <div className="lg:col-span-3 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+            <p className="text-sm font-semibold text-status-lost">Unable to load profile</p>
+            <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          </div>
+        )}
         {/* Left: Profile Card */}
         <div className="space-y-5">
           <Card padding="p-6">
             <div className="flex flex-col items-center text-center">
               {/* Avatar */}
               <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center text-white text-2xl font-bold mb-3">
-                {getInitials(user?.name || 'U')}
+                {getInitials(profile?.name || 'U')}
               </div>
-              <h2 className="text-lg font-bold text-text-primary">{user?.name}</h2>
-              <p className="text-sm text-text-secondary">{user?.role}</p>
+              <h2 className="text-lg font-bold text-text-primary">{profile?.name}</h2>
+              <p className="text-sm text-text-secondary">{profile?.role}</p>
               <div className="mt-1">
                 <span className="text-xs font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-                  {user?.department}
+                  {profile?.department || 'No department'}
                 </span>
               </div>
             </div>
 
             <div className="mt-5 space-y-3 border-t border-border pt-4">
-              <InfoRow icon={Mail} label="Email" value={user?.email} />
-              <InfoRow icon={Briefcase} label="Employee ID" value={user?.employeeId} />
-              <InfoRow icon={Building2} label="Department" value={user?.department} />
+              <InfoRow icon={Mail} label="Email" value={profile?.email} />
+              <InfoRow icon={Briefcase} label="Employee ID" value={profile?.id || profile?.employeeId} />
+              <InfoRow icon={Building2} label="Department" value={profile?.department} />
             </div>
           </Card>
 
@@ -127,7 +186,11 @@ export default function EmployeeProfile() {
               <Button variant="ghost" size="sm" onClick={() => navigate('/allocation')}>View All</Button>
             </div>
 
-            {myAllocations.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center py-8 text-text-muted">
+                <p className="text-sm">Loading allocated assets...</p>
+              </div>
+            ) : myAllocations.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-text-muted">
                 <Package size={28} className="mb-2 opacity-40" />
                 <p className="text-sm">No assets currently allocated</p>

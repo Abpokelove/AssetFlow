@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,14 +11,10 @@ import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import StatusBadge from '../components/common/StatusBadge';
 import SearchBar from '../components/common/SearchBar';
-import { mockBookings, mockAssets } from '../utils/mockData';
-import { formatDate, formatDateTime } from '../utils/helpers';
-
-// POST /api/bookings      { assetId, startDate, endDate, purpose, notes }
-// PUT  /api/bookings/:id
-// POST /api/bookings/:id/cancel  { reason }
-// GET  /api/bookings/availability { assetId, startDate, endDate }
-// GET  /api/bookings/calendar     { month, year }
+import { cancelBooking, checkBookingAvailability, createBooking, getBookings } from '../services/api/bookingService';
+import { getAssets } from '../services/api/assetService';
+import { apiErrorMessage, unwrapPage } from '../services/api/responseUtils';
+import { formatDateTime } from '../utils/helpers';
 
 const localizer = momentLocalizer(moment);
 
@@ -30,78 +26,105 @@ const STATUS_COLORS_CAL = {
 };
 
 export default function ResourceBooking() {
-  const [bookings, setBookings] = useState(mockBookings);
-  const [view, setView] = useState('calendar'); // 'calendar' | 'list'
+  const [bookings, setBookings] = useState([]);
+  const [assets, setAssets] = useState([]);
+  const [view, setView] = useState('calendar');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
-  const [overlapWarning, setOverlapWarning] = useState(false);
+  const [overlapWarning, setOverlapWarning] = useState('');
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const { register, handleSubmit, formState: { errors }, reset, watch } = useForm();
 
-  // Convert bookings to calendar events
-  const calendarEvents = bookings.map((b) => ({
-    id: b.id,
-    title: `${b.assetName} — ${b.bookedBy}`,
-    start: new Date(b.startDate),
-    end: new Date(b.endDate),
-    resource: b,
-    color: STATUS_COLORS_CAL[b.status] || '#5E244E',
+  const loadBookingData = async () => {
+    setPageLoading(true);
+    setError(null);
+    try {
+      const assetRes = await getAssets({ pageSize: 100 });
+      setAssets(unwrapPage(assetRes).data.filter((asset) => ['Available', 'Reserved'].includes(asset.status)));
+
+      const bookingRes = await getBookings({ pageSize: 100 });
+      setBookings(unwrapPage(bookingRes).data);
+    } catch (err) {
+      setBookings([]);
+      setError(apiErrorMessage(err, 'Booking API is not available yet'));
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBookingData();
+  }, []);
+
+  const calendarEvents = bookings.map((booking) => ({
+    id: booking.id,
+    title: `${booking.assetName} - ${booking.bookedBy}`,
+    start: new Date(booking.startDate),
+    end: new Date(booking.endDate),
+    resource: booking,
+    color: STATUS_COLORS_CAL[booking.status] || '#5E244E',
   }));
 
-  const filteredBookings = useMemo(() => bookings.filter((b) => {
+  const filteredBookings = useMemo(() => bookings.filter((booking) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || b.assetName.toLowerCase().includes(q) || b.bookedBy.toLowerCase().includes(q);
-    const matchStatus = !filterStatus || b.status === filterStatus;
+    const matchSearch = !q || booking.assetName?.toLowerCase().includes(q) || booking.bookedBy?.toLowerCase().includes(q);
+    const matchStatus = !filterStatus || booking.status === filterStatus;
     return matchSearch && matchStatus;
   }), [bookings, search, filterStatus]);
 
   const handleCreate = async (data) => {
-    // Overlap check (client-side preview)
-    // TODO: GET /api/bookings/availability?assetId=&startDate=&endDate=
-    const hasOverlap = bookings.some((b) =>
-      b.assetId === data.assetId &&
-      b.status !== 'Cancelled' &&
-      new Date(data.startDate) < new Date(b.endDate) &&
-      new Date(data.endDate) > new Date(b.startDate)
-    );
-    if (hasOverlap) { setOverlapWarning(true); return; }
-
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    // TODO: const { data: booking } = await createBooking(data);
-    const asset = mockAssets.find((a) => a.id === data.assetId);
-    setBookings((prev) => [...prev, {
-      id: `bkg-${Date.now()}`,
-      assetId: data.assetId, assetName: asset?.name || 'Unknown', assetTag: asset?.tag || '',
-      bookedBy: 'You', bookedById: 'emp-001', department: 'IT Operations',
-      startDate: data.startDate, endDate: data.endDate,
-      purpose: data.purpose, status: 'Upcoming', approvedBy: null,
-    }]);
-    toast.success('Booking created successfully');
-    setLoading(false);
-    setModalOpen(false);
-    reset();
-    setOverlapWarning(false);
+    setOverlapWarning('');
+    try {
+      const availabilityRes = await checkBookingAvailability({
+        assetId: data.assetId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+      });
+
+      if (availabilityRes.data?.available === false) {
+        setOverlapWarning('This resource already has a booking during the selected time window.');
+        return;
+      }
+
+      await createBooking(data);
+      toast.success('Booking created successfully');
+      setModalOpen(false);
+      reset();
+      await loadBookingData();
+    } catch (err) {
+      setOverlapWarning(apiErrorMessage(err, 'Unable to create booking. The booking API may not be available yet.'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCancel = async (bookingId) => {
-    // TODO: await cancelBooking(bookingId, { reason: 'User cancelled' });
-    setBookings((prev) => prev.map((b) => b.id === bookingId ? { ...b, status: 'Cancelled' } : b));
-    toast.success('Booking cancelled');
-    setSelectedBooking(null);
+    setLoading(true);
+    try {
+      await cancelBooking(bookingId, { reason: 'User cancelled' });
+      toast.success('Booking cancelled');
+      setSelectedBooking(null);
+      await loadBookingData();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to cancel booking'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const bookingsByStatus = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'].reduce((acc, s) => {
-    acc[s] = bookings.filter((b) => b.status === s).length;
+  const bookingsByStatus = ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'].reduce((acc, status) => {
+    acc[status] = bookings.filter((booking) => booking.status === status).length;
     return acc;
   }, {});
 
   return (
     <div className="af-page max-w-screen-xl mx-auto">
-      {/* Header */}
       <div className="af-page-header">
         <div>
           <h1 className="af-page-title">Resource Booking</h1>
@@ -112,7 +135,17 @@ export default function ResourceBooking() {
         </Button>
       </div>
 
-      {/* Stats */}
+      {error && (
+        <div className="mb-5 flex items-start gap-3 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <AlertTriangle size={16} className="text-status-lost flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-status-lost">Unable to load bookings</p>
+            <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadBookingData}>Retry</Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {Object.entries(bookingsByStatus).map(([status, count]) => (
           <div key={status} className="bg-surface rounded-card border border-border p-4">
@@ -122,7 +155,6 @@ export default function ResourceBooking() {
         ))}
       </div>
 
-      {/* View toggle */}
       <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-center">
         <div className="flex border border-border rounded-button overflow-hidden self-start">
           <button onClick={() => setView('calendar')} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'calendar' ? 'bg-primary text-white' : 'text-text-secondary hover:bg-background'}`}>
@@ -134,12 +166,12 @@ export default function ResourceBooking() {
         </div>
         {view === 'list' && (
           <>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search bookings…" className="w-full sm:w-64" />
+            <SearchBar value={search} onChange={setSearch} placeholder="Search bookings..." className="w-full sm:w-64" />
             <div className="flex flex-wrap gap-2 sm:ml-auto">
-              {['', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'].map((s) => (
-                <button key={s || 'all'} onClick={() => setFilterStatus(s)}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}>
-                  {s || 'All'}
+              {['', 'Upcoming', 'Ongoing', 'Completed', 'Cancelled'].map((status) => (
+                <button key={status || 'all'} onClick={() => setFilterStatus(status)}
+                  className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${filterStatus === status ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}>
+                  {status || 'All'}
                 </button>
               ))}
             </div>
@@ -148,33 +180,35 @@ export default function ResourceBooking() {
       </div>
 
       <AnimatePresence mode="wait">
-        {/* Calendar View */}
         {view === 'calendar' && (
           <motion.div key="calendar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="bg-surface rounded-card border border-border p-5 overflow-x-auto">
               <div style={{ minWidth: 600 }}>
-                <Calendar
-                  localizer={localizer}
-                  events={calendarEvents}
-                  startAccessor="start"
-                  endAccessor="end"
-                  style={{ height: 520 }}
-                  views={['month', 'week', 'day']}
-                  defaultView="month"
-                  eventPropGetter={(event) => ({
-                    style: { backgroundColor: event.color, borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 500 },
-                  })}
-                  onSelectEvent={(event) => setSelectedBooking(event.resource)}
-                  onSelectSlot={() => setModalOpen(true)}
-                  selectable
-                  popup
-                />
+                {pageLoading ? (
+                  <p className="text-sm text-text-muted py-16 text-center">Loading bookings...</p>
+                ) : (
+                  <Calendar
+                    localizer={localizer}
+                    events={calendarEvents}
+                    startAccessor="start"
+                    endAccessor="end"
+                    style={{ height: 520 }}
+                    views={['month', 'week', 'day']}
+                    defaultView="month"
+                    eventPropGetter={(event) => ({
+                      style: { backgroundColor: event.color, borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 500 },
+                    })}
+                    onSelectEvent={(event) => setSelectedBooking(event.resource)}
+                    onSelectSlot={() => setModalOpen(true)}
+                    selectable
+                    popup
+                  />
+                )}
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* List View */}
         {view === 'list' && (
           <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="space-y-3">
@@ -193,8 +227,8 @@ export default function ResourceBooking() {
                         <p className="text-xs text-text-muted font-mono">{booking.assetTag}</p>
                       </div>
                       <div className="text-xs text-text-secondary space-y-0.5 sm:text-right">
-                        <p>{booking.bookedBy} · {booking.department}</p>
-                        <p>{formatDateTime(booking.startDate)} → {formatDateTime(booking.endDate)}</p>
+                        <p>{booking.bookedBy} - {booking.department}</p>
+                        <p>{formatDateTime(booking.startDate)} to {formatDateTime(booking.endDate)}</p>
                         <p className="text-text-muted">{booking.purpose}</p>
                       </div>
                     </div>
@@ -206,7 +240,6 @@ export default function ResourceBooking() {
         )}
       </AnimatePresence>
 
-      {/* Booking Detail Modal */}
       {selectedBooking && (
         <Modal
           open={Boolean(selectedBooking)}
@@ -217,7 +250,7 @@ export default function ResourceBooking() {
             <>
               <Button variant="ghost" onClick={() => setSelectedBooking(null)}>Close</Button>
               {selectedBooking.status === 'Upcoming' && (
-                <Button variant="danger" onClick={() => handleCancel(selectedBooking.id)}>Cancel Booking</Button>
+                <Button variant="danger" onClick={() => handleCancel(selectedBooking.id)} loading={loading}>Cancel Booking</Button>
               )}
             </>
           }
@@ -236,10 +269,10 @@ export default function ResourceBooking() {
                 ['Start', formatDateTime(selectedBooking.startDate)],
                 ['End', formatDateTime(selectedBooking.endDate)],
                 ['Approved By', selectedBooking.approvedBy || 'Pending'],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4">
-                  <span className="text-xs text-text-muted">{k}</span>
-                  <span className="text-xs font-medium text-text-primary text-right">{v}</span>
+              ].map(([key, value]) => (
+                <div key={key} className="flex justify-between gap-4">
+                  <span className="text-xs text-text-muted">{key}</span>
+                  <span className="text-xs font-medium text-text-primary text-right">{value}</span>
                 </div>
               ))}
             </div>
@@ -247,15 +280,14 @@ export default function ResourceBooking() {
         </Modal>
       )}
 
-      {/* New Booking Modal */}
       <Modal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); reset(); setOverlapWarning(false); }}
+        onClose={() => { setModalOpen(false); reset(); setOverlapWarning(''); }}
         title="New Booking"
         size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={() => { setModalOpen(false); reset(); setOverlapWarning(false); }} disabled={loading}>Cancel</Button>
+            <Button variant="ghost" onClick={() => { setModalOpen(false); reset(); setOverlapWarning(''); }} disabled={loading}>Cancel</Button>
             <Button variant="primary" onClick={handleSubmit(handleCreate)} loading={loading}>Create Booking</Button>
           </>
         }
@@ -265,19 +297,19 @@ export default function ResourceBooking() {
             <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-button">
               <AlertTriangle size={14} className="text-status-lost flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-status-lost">Booking Overlap</p>
-                <p className="text-xs text-red-600">This asset is already booked for the selected period. Choose a different time or asset.</p>
+                <p className="text-xs font-semibold text-status-lost">Booking unavailable</p>
+                <p className="text-xs text-red-600">{overlapWarning}</p>
               </div>
-              <button onClick={() => setOverlapWarning(false)} className="text-red-400 ml-auto"><X size={12} /></button>
+              <button onClick={() => setOverlapWarning('')} className="text-red-400 ml-auto"><X size={12} /></button>
             </div>
           )}
 
           <div>
             <label className="af-label">Asset to Book</label>
             <select className="af-select" {...register('assetId', { required: 'Required' })}>
-              <option value="">Select asset…</option>
-              {mockAssets.filter((a) => ['Available', 'Reserved'].includes(a.status)).map((a) => (
-                <option key={a.id} value={a.id}>{a.name} ({a.tag})</option>
+              <option value="">Select asset...</option>
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>{asset.name} ({asset.tag})</option>
               ))}
             </select>
             {errors.assetId && <p className="mt-1 text-xs text-status-lost">{errors.assetId.message}</p>}
@@ -289,11 +321,11 @@ export default function ResourceBooking() {
             <Input label="End Date & Time" type="datetime-local" error={errors.endDate?.message}
               {...register('endDate', {
                 required: 'Required',
-                validate: (v) => !watch('startDate') || v > watch('startDate') || 'Must be after start',
+                validate: (value) => !watch('startDate') || value > watch('startDate') || 'Must be after start',
               })} />
           </div>
 
-          <Input label="Purpose" placeholder="e.g. Client meeting, site visit…" error={errors.purpose?.message}
+          <Input label="Purpose" placeholder="e.g. Client meeting, site visit..." error={errors.purpose?.message}
             {...register('purpose', { required: 'Required' })} />
 
           <div>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, CheckCheck, Filter, Inbox } from 'lucide-react';
+import { AlertTriangle, CheckCheck, Inbox } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NotificationItem from '../components/notifications/NotificationItem';
 import SearchBar from '../components/common/SearchBar';
@@ -16,7 +16,7 @@ const TYPES = ['', 'maintenance', 'allocation', 'booking', 'audit', 'return', 's
 const PRIORITY_FILTERS = ['', 'High', 'Medium', 'Low'];
 
 export default function Notifications() {
-  const { notifications, unreadCount, markRead: markNotificationRead, markAllRead: markAllNotificationsRead, deleteNotification: deleteNotificationItem } = useNotifications();
+  const { notifications, unreadCount, loading, error, refreshNotifications, markRead: markNotificationRead, markAllRead: markAllNotificationsRead, deleteNotification: deleteNotificationItem } = useNotifications();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
@@ -31,21 +31,30 @@ export default function Notifications() {
     return matchSearch && matchType && matchPriority && matchRead;
   }), [notifications, search, filterType, filterPriority, filterRead]);
 
-  const markRead = (id) => {
-    // TODO: await markAsRead(id);
-    markNotificationRead(id);
+  const markRead = async (id) => {
+    try {
+      await markNotificationRead(id);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || 'Unable to mark notification as read');
+    }
   };
 
-  const markAllRead = () => {
-    // TODO: await markAllAsRead();
-    markAllNotificationsRead();
-    toast.success('All notifications marked as read');
+  const markAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      toast.success('All notifications marked as read');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || 'Unable to mark notifications as read');
+    }
   };
 
-  const deleteNotif = (id) => {
-    // TODO: await deleteNotification(id);
-    deleteNotificationItem(id);
-    toast.success('Notification dismissed');
+  const deleteNotif = async (id) => {
+    try {
+      await deleteNotificationItem(id);
+      toast.success('Notification dismissed');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || 'Unable to dismiss notification');
+    }
   };
 
   return (
@@ -110,9 +119,24 @@ export default function Notifications() {
       {/* Results count */}
       <p className="text-xs text-text-muted mb-3">{filtered.length} notification{filtered.length !== 1 ? 's' : ''}</p>
 
+      {error && (
+        <div className="mb-4 flex items-start gap-3 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <AlertTriangle size={16} className="text-status-lost flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-status-lost">Unable to load notifications</p>
+            <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refreshNotifications()}>Retry</Button>
+        </div>
+      )}
+
       {/* List */}
       <AnimatePresence>
-        {filtered.length === 0 ? (
+        {loading ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
+            <p className="text-text-muted text-sm">Loading notifications...</p>
+          </motion.div>
+        ) : filtered.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
             <div className="w-14 h-14 rounded-full bg-background flex items-center justify-center mx-auto mb-3">
               <Inbox size={24} className="text-text-muted" />

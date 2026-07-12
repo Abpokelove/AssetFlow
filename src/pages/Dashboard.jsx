@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package, ArrowLeftRight, Wrench, Bell, CalendarDays,
@@ -14,11 +14,10 @@ import { MonthlyBarChart } from '../components/dashboard/ChartCard';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
-import {
-  mockDashboardKPIs, mockRecentActivity,
-  mockAssetsByStatus, mockMonthlyActivity, mockAllocations,
-} from '../utils/mockData';
-import { formatDate } from '../utils/helpers';
+import { getOverdueAllocations } from '../services/api/allocationService';
+import { getAssetsByStatus, getDashboardSummary, getMonthlyActivity } from '../services/api/reportService';
+import { apiErrorMessage, unwrapList } from '../services/api/responseUtils';
+import { formatDate, timeAgo } from '../utils/helpers';
 
 // GET /api/reports/summary  → KPI numbers
 // GET /api/reports/monthly-activity  → bar chart
@@ -49,7 +48,68 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { notifications, unreadCount } = useNotifications();
   const navigate = useNavigate();
-  const kpis = mockDashboardKPIs;
+  const [kpis, setKpis] = useState({
+    totalAssets: 0,
+    availableAssets: 0,
+    allocatedAssets: 0,
+    underMaintenance: 0,
+    pendingApprovals: 0,
+    overdueReturns: 0,
+    activeBookings: 0,
+    activebookings: 0,
+    upcomingAudits: 0,
+  });
+  const [assetsByStatus, setAssetsByStatus] = useState([]);
+  const [monthlyActivity, setMonthlyActivity] = useState([]);
+  const [dueAllocations, setDueAllocations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [summaryRes, statusRes, monthlyRes, overdueRes] = await Promise.all([
+          getDashboardSummary(),
+          getAssetsByStatus(),
+          getMonthlyActivity({ months: 7 }),
+          getOverdueAllocations(),
+        ]);
+
+        if (cancelled) return;
+        const summary = summaryRes.data || {};
+        setKpis({
+          ...summary,
+          activebookings: summary.activebookings ?? summary.activeBookings ?? 0,
+        });
+        setAssetsByStatus(unwrapList(statusRes));
+        setMonthlyActivity(unwrapList(monthlyRes));
+        setDueAllocations(unwrapList(overdueRes));
+      } catch (err) {
+        if (!cancelled) setError(apiErrorMessage(err, 'Unable to load dashboard data'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const recentActivity = notifications.slice(0, 6).map((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    action: notification.title,
+    asset: notification.message,
+    user: 'System',
+    time: timeAgo(notification.timestamp),
+  }));
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -70,12 +130,22 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {error && (
+        <div className="mb-5 flex items-start gap-3 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <AlertTriangle size={16} className="text-status-lost flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-status-lost">Unable to load dashboard</p>
+            <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          </div>
+        </div>
+      )}
+
       {/* ---- KPI Grid ---- */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPICard title="Total Assets" value={kpis.totalAssets} icon={Package} color="#5E244E" trend={3.2} trendLabel="this month" delay={0} onClick={() => navigate('/assets')} />
-        <KPICard title="Available" value={kpis.availableAssets} icon={CheckCircle} color="#4CAF50" trend={1.1} trendLabel="vs last week" delay={0.05} onClick={() => navigate('/assets')} />
-        <KPICard title="Allocated" value={kpis.allocatedAssets} icon={ArrowLeftRight} color="#AA1C41" trend={-0.8} trendLabel="vs last week" delay={0.1} onClick={() => navigate('/allocation')} />
-        <KPICard title="Under Maintenance" value={kpis.underMaintenance} icon={Wrench} color="#E68457" trend={2.1} trendLabel="this week" delay={0.15} onClick={() => navigate('/maintenance')} />
+        <KPICard title="Total Assets" value={kpis.totalAssets} icon={Package} color="#5E244E" delay={0} onClick={() => navigate('/assets')} />
+        <KPICard title="Available" value={kpis.availableAssets} icon={CheckCircle} color="#4CAF50" delay={0.05} onClick={() => navigate('/assets')} />
+        <KPICard title="Allocated" value={kpis.allocatedAssets} icon={ArrowLeftRight} color="#AA1C41" delay={0.1} onClick={() => navigate('/allocation')} />
+        <KPICard title="Under Maintenance" value={kpis.underMaintenance} icon={Wrench} color="#E68457" delay={0.15} onClick={() => navigate('/maintenance')} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -113,7 +183,7 @@ export default function Dashboard() {
               <p className="text-xs text-text-secondary">Allocations, returns & maintenance over 7 months</p>
             </div>
           </div>
-          <MonthlyBarChart data={mockMonthlyActivity} />
+          <MonthlyBarChart data={monthlyActivity} />
         </Card>
 
         {/* Asset Status Pie Chart */}
@@ -124,8 +194,8 @@ export default function Dashboard() {
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={mockAssetsByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                {mockAssetsByStatus.map((entry, i) => (
+              <Pie data={assetsByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                {assetsByStatus.map((entry, i) => (
                   <Cell key={entry.name} fill={entry.color || PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
@@ -146,7 +216,7 @@ export default function Dashboard() {
               View all
             </Button>
           </div>
-          <ActivityCard activities={mockRecentActivity} />
+          {loading ? <p className="text-sm text-text-muted py-6">Loading activity...</p> : <ActivityCard activities={recentActivity} />}
         </Card>
 
         {/* Notifications Panel */}
@@ -191,7 +261,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {mockAllocations.map((a) => (
+              {dueAllocations.map((a) => (
                 <tr key={a.id} className="border-b border-border last:border-0 hover:bg-background/60 transition-colors">
                   <td className="py-3 px-3">
                     <p className="text-xs font-semibold text-text-primary">{a.assetName}</p>
@@ -203,6 +273,11 @@ export default function Dashboard() {
                   <td className="py-3 px-3"><StatusBadge status={a.status === 'Active' ? 'Allocated' : 'Available'} size="sm" /></td>
                 </tr>
               ))}
+              {!loading && dueAllocations.length === 0 && (
+                <tr>
+                  <td className="py-6 px-3 text-xs text-text-muted" colSpan={5}>No overdue returns found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,15 +1,10 @@
 import { useForm } from 'react-hook-form';
+import { AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal';
 import Input from '../common/Input';
 import Button from '../common/Button';
-import { mockEmployees } from '../../utils/mockData';
-import { AlertTriangle } from 'lucide-react';
 
-/**
- * TransferDialog
- * POST /api/allocations/:id/transfer { newEmployeeId, reason, notes }
- */
-export default function TransferDialog({ open, onClose, allocation, onConfirm, loading }) {
+export default function TransferDialog({ open, onClose, allocation, onConfirm, loading, employees = [] }) {
   const { register, handleSubmit, formState: { errors } } = useForm();
 
   if (!allocation) return null;
@@ -36,16 +31,20 @@ export default function TransferDialog({ open, onClose, allocation, onConfirm, l
         <div>
           <label className="af-label">Transfer To</label>
           <select className="af-select" {...register('newEmployeeId', { required: 'Select an employee' })}>
-            <option value="">Select employee…</option>
-            {mockEmployees.filter((e) => e.id !== allocation.employeeId).map((e) => (
-              <option key={e.id} value={e.id}>{e.name} — {e.department}</option>
+            <option value="">Select employee...</option>
+            {employees.filter((employee) => employee.id !== allocation.employeeId).map((employee) => (
+              <option key={employee.id} value={employee.id}>{employee.name} - {employee.department || 'No department'}</option>
             ))}
           </select>
           {errors.newEmployeeId && <p className="mt-1 text-xs text-status-lost">{errors.newEmployeeId.message}</p>}
         </div>
 
-        <Input label="Reason for Transfer" placeholder="e.g. Role change, department move…" error={errors.reason?.message}
-          {...register('reason', { required: 'Required' })} />
+        <Input
+          label="Reason for Transfer"
+          placeholder="e.g. Role change, department move..."
+          error={errors.reason?.message}
+          {...register('reason', { required: 'Required' })}
+        />
 
         <div>
           <label className="af-label">Notes (optional)</label>

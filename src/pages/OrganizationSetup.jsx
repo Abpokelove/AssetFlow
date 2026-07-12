@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,7 +13,18 @@ import Modal from '../components/common/Modal';
 import SearchBar from '../components/common/SearchBar';
 import StatusBadge from '../components/common/StatusBadge';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import { mockDepartments, mockCategories, mockEmployees } from '../utils/mockData';
+import {
+  createCategory,
+  createDepartment,
+  createEmployee,
+  getCategories,
+  getDepartments,
+  getEmployees,
+  updateCategory,
+  updateDepartment,
+  updateEmployee,
+} from '../services/api/organizationService';
+import { apiErrorMessage, unwrapList, unwrapPage } from '../services/api/responseUtils';
 import { getInitials, formatDate } from '../utils/helpers';
 
 // GET  /api/departments
@@ -43,28 +54,76 @@ export default function OrganizationSetup() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
 
-  // Local mock state
-  const [departments, setDepartments] = useState(mockDepartments);
-  const [categories, setCategories] = useState(mockCategories);
-  const [employees, setEmployees] = useState(mockEmployees);
+  const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [employees, setEmployees] = useState([]);
+
+  const loadOrganization = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [deptRes, catRes, empRes] = await Promise.all([
+        getDepartments(),
+        getCategories(),
+        getEmployees({ pageSize: 100 }),
+      ]);
+      setDepartments(unwrapList(deptRes));
+      setCategories(unwrapList(catRes));
+      setEmployees(unwrapPage(empRes).data);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Unable to load organization data'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOrganization();
+  }, []);
 
   const openAdd = () => { setEditTarget(null); setModalOpen(true); };
   const openEdit = (item) => { setEditTarget(item); setModalOpen(true); };
 
   const handleDelete = () => {
-    // TODO: DELETE /api/{resource}/:id
-    if (activeTab === 'departments') setDepartments((p) => p.filter((d) => d.id !== deleteTarget.id));
-    if (activeTab === 'categories') setCategories((p) => p.filter((c) => c.id !== deleteTarget.id));
-    if (activeTab === 'employees') setEmployees((p) => p.filter((e) => e.id !== deleteTarget.id));
-    toast.success('Deleted successfully');
+    toast.error('Delete API is not available in the backend yet.');
     setDeleteTarget(null);
   };
 
+  const handleSave = async (data) => {
+    setFormLoading(true);
+    try {
+      if (activeTab === 'departments') {
+        if (editTarget) await updateDepartment(editTarget.id, data);
+        else await createDepartment(data);
+      }
+      if (activeTab === 'categories') {
+        if (editTarget) await updateCategory(editTarget.id, data);
+        else await createCategory(data);
+      }
+      if (activeTab === 'employees') {
+        if (editTarget) await updateEmployee(editTarget.id, data);
+        else await createEmployee(data);
+      }
+
+      toast.success(editTarget ? 'Updated successfully' : 'Added successfully');
+      setModalOpen(false);
+      setEditTarget(null);
+      await loadOrganization();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to save organization record'));
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const q = search.toLowerCase();
-  const filteredDepts = departments.filter((d) => d.name.toLowerCase().includes(q) || d.manager?.toLowerCase().includes(q));
-  const filteredCats = categories.filter((c) => c.name.toLowerCase().includes(q));
-  const filteredEmps = employees.filter((e) => e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || e.department.toLowerCase().includes(q));
+  const filteredDepts = departments.filter((d) => d.name?.toLowerCase().includes(q) || d.manager?.toLowerCase().includes(q));
+  const filteredCats = categories.filter((c) => c.name?.toLowerCase().includes(q));
+  const filteredEmps = employees.filter((e) => e.name?.toLowerCase().includes(q) || e.email?.toLowerCase().includes(q) || e.department?.toLowerCase().includes(q));
 
   return (
     <div className="af-page max-w-screen-xl mx-auto">
@@ -75,6 +134,14 @@ export default function OrganizationSetup() {
           <p className="af-page-subtitle">Manage departments, asset categories, and employee records</p>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-5 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <p className="text-sm font-semibold text-status-lost">Unable to load organization data</p>
+          <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          <Button variant="outline" size="sm" onClick={loadOrganization} className="mt-3">Retry</Button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 p-1 bg-border/60 rounded-button w-full sm:w-fit mb-6">
@@ -102,8 +169,10 @@ export default function OrganizationSetup() {
             </Button>
           </div>
 
+          {loading && <p className="text-sm text-text-muted py-8">Loading organization data...</p>}
+
           {/* ---- Departments ---- */}
-          {activeTab === 'departments' && (
+          {!loading && activeTab === 'departments' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredDepts.map((dept) => (
                 <Card key={dept.id} padding="p-5" className="group">
@@ -134,7 +203,7 @@ export default function OrganizationSetup() {
           )}
 
           {/* ---- Categories ---- */}
-          {activeTab === 'categories' && (
+          {!loading && activeTab === 'categories' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredCats.map((cat) => (
                 <Card key={cat.id} padding="p-5" className="group">
@@ -158,7 +227,7 @@ export default function OrganizationSetup() {
           )}
 
           {/* ---- Employees ---- */}
-          {activeTab === 'employees' && (
+          {!loading && activeTab === 'employees' && (
             <div className="overflow-hidden rounded-card border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-background">
@@ -212,22 +281,8 @@ export default function OrganizationSetup() {
         onClose={() => setModalOpen(false)}
         tab={activeTab}
         editTarget={editTarget}
-        onSave={(data) => {
-          if (activeTab === 'departments') {
-            if (editTarget) setDepartments((p) => p.map((d) => d.id === editTarget.id ? { ...d, ...data } : d));
-            else setDepartments((p) => [...p, { id: `dept-${Date.now()}`, assetCount: 0, headCount: 0, ...data }]);
-          }
-          if (activeTab === 'categories') {
-            if (editTarget) setCategories((p) => p.map((c) => c.id === editTarget.id ? { ...c, ...data } : c));
-            else setCategories((p) => [...p, { id: `cat-${Date.now()}`, assetCount: 0, ...data }]);
-          }
-          if (activeTab === 'employees') {
-            if (editTarget) setEmployees((p) => p.map((e) => e.id === editTarget.id ? { ...e, ...data } : e));
-            else setEmployees((p) => [...p, { id: `emp-${Date.now()}`, allocatedAssets: 0, status: 'Active', joinDate: new Date().toISOString(), ...data }]);
-          }
-          toast.success(editTarget ? 'Updated successfully' : 'Added successfully');
-          setModalOpen(false);
-        }}
+        onSave={handleSave}
+        loading={formLoading}
       />
 
       {/* ---- Delete Confirm ---- */}
@@ -245,7 +300,7 @@ export default function OrganizationSetup() {
 }
 
 /* ---- Inner Modal Component ---- */
-function OrgModal({ open, onClose, tab, editTarget, onSave }) {
+function OrgModal({ open, onClose, tab, editTarget, onSave, loading }) {
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     values: editTarget || {},
   });
@@ -264,8 +319,8 @@ function OrgModal({ open, onClose, tab, editTarget, onSave }) {
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={() => { reset(); onClose(); }}>Cancel</Button>
-          <Button variant="primary" onClick={handleSubmit(onSave)}>
+          <Button variant="ghost" onClick={() => { reset(); onClose(); }} disabled={loading}>Cancel</Button>
+          <Button variant="primary" onClick={handleSubmit(onSave)} loading={loading}>
             {editTarget ? 'Save Changes' : 'Add'}
           </Button>
         </>

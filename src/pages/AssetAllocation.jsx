@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
-import { Plus, AlertTriangle, Filter, ArrowLeftRight } from 'lucide-react';
+import { Plus, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import AllocationCard from '../components/allocation/AllocationCard';
 import TransferDialog from '../components/allocation/TransferDialog';
 import Modal from '../components/common/Modal';
 import Button from '../components/common/Button';
@@ -11,81 +10,110 @@ import Input from '../components/common/Input';
 import SearchBar from '../components/common/SearchBar';
 import StatusBadge from '../components/common/StatusBadge';
 import DataTable from '../components/common/DataTable';
-import { mockAllocations, mockAssets, mockEmployees } from '../utils/mockData';
+import { allocateAsset, checkAllocationConflict, getAllocations, returnAsset, transferAsset } from '../services/api/allocationService';
+import { getAssets } from '../services/api/assetService';
+import { getEmployees } from '../services/api/organizationService';
+import { apiErrorMessage, unwrapPage } from '../services/api/responseUtils';
 import { formatDate } from '../utils/helpers';
 
-// POST /api/allocations          { assetId, employeeId, expectedReturn?, notes? }
-// POST /api/allocations/:id/transfer { newEmployeeId, reason, notes }
-// POST /api/allocations/:id/return   { condition, notes, returnedDate }
-// GET  /api/allocations/conflicts    { assetId, startDate, endDate }
-// GET  /api/allocations/overdue
-
 export default function AssetAllocation() {
-  const [allocations, setAllocations] = useState(mockAllocations);
+  const [allocations, setAllocations] = useState([]);
+  const [assets, setAssets] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('Active');
   const [allocateOpen, setAllocateOpen] = useState(false);
   const [returnTarget, setReturnTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
-  const [conflictWarning, setConflictWarning] = useState(false);
+  const [conflictWarning, setConflictWarning] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const filtered = useMemo(() => allocations.filter((a) => {
+  const loadAllocationData = async () => {
+    setPageLoading(true);
+    setError(null);
+    try {
+      const [allocationRes, assetRes, employeeRes] = await Promise.all([
+        getAllocations({ pageSize: 100 }),
+        getAssets({ pageSize: 100 }),
+        getEmployees({ pageSize: 100 }),
+      ]);
+      setAllocations(unwrapPage(allocationRes).data);
+      setAssets(unwrapPage(assetRes).data);
+      setEmployees(unwrapPage(employeeRes).data);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Unable to load allocation data'));
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAllocationData();
+  }, []);
+
+  const filtered = useMemo(() => allocations.filter((allocation) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || a.assetName.toLowerCase().includes(q) || a.employeeName?.toLowerCase().includes(q);
-    const matchStatus = !filterStatus || a.status === filterStatus;
+    const matchSearch = !q ||
+      allocation.assetName?.toLowerCase().includes(q) ||
+      allocation.employeeName?.toLowerCase().includes(q) ||
+      allocation.assetTag?.toLowerCase().includes(q);
+    const matchStatus = !filterStatus || allocation.status === filterStatus;
     return matchSearch && matchStatus;
   }), [allocations, search, filterStatus]);
 
+  const availableAssets = assets.filter((asset) => asset.status === 'Available');
+
   const handleAllocate = async (data) => {
-    // TODO: check conflict → GET /api/allocations/conflicts?assetId=&...
-    const asset = mockAssets.find((a) => a.id === data.assetId);
-    if (asset?.status === 'Allocated') {
-      setConflictWarning(true);
-      return;
-    }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    // TODO: const { data: alc } = await allocateAsset(data);
-    const employee = mockEmployees.find((e) => e.id === data.employeeId);
-    setAllocations((prev) => [...prev, {
-      id: `alc-${Date.now()}`,
-      assetId: data.assetId, assetName: asset?.name || 'Unknown', assetTag: asset?.tag || '',
-      employeeId: data.employeeId, employeeName: employee?.name || 'Unknown',
-      department: employee?.department || '',
-      allocatedDate: new Date().toISOString(), expectedReturn: data.expectedReturn || null,
-      returnedDate: null, allocatedBy: 'You', status: 'Active', notes: data.notes,
-    }]);
-    toast.success('Asset allocated successfully');
-    setLoading(false);
-    setAllocateOpen(false);
+    setConflictWarning('');
+    try {
+      const conflictRes = await checkAllocationConflict({ assetId: data.assetId });
+      if (conflictRes.data?.hasConflict) {
+        const holder = conflictRes.data.conflictingAllocations?.[0]?.employeeName || 'another employee';
+        setConflictWarning(`This asset is already allocated to ${holder}. Return or transfer the active allocation first.`);
+        return;
+      }
+
+      await allocateAsset(data);
+      toast.success('Asset allocated successfully');
+      setAllocateOpen(false);
+      await loadAllocationData();
+    } catch (err) {
+      setConflictWarning(apiErrorMessage(err, 'Unable to allocate asset'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleReturn = async (data) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    // TODO: await returnAsset(returnTarget.id, data);
-    setAllocations((prev) => prev.map((a) => a.id === returnTarget.id
-      ? { ...a, status: 'Returned', returnedDate: new Date().toISOString() } : a));
-    toast.success('Asset returned successfully');
-    setLoading(false);
-    setReturnTarget(null);
+    try {
+      await returnAsset(returnTarget.id, data);
+      toast.success('Asset returned successfully');
+      setReturnTarget(null);
+      await loadAllocationData();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to return asset'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleTransfer = async (data) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    // TODO: await transferAsset(transferTarget.id, data);
-    const employee = mockEmployees.find((e) => e.id === data.newEmployeeId);
-    setAllocations((prev) => prev.map((a) => a.id === transferTarget.id
-      ? { ...a, employeeId: data.newEmployeeId, employeeName: employee?.name || 'Unknown', department: employee?.department || '' }
-      : a));
-    toast.success('Asset transferred successfully');
-    setLoading(false);
-    setTransferTarget(null);
+    try {
+      await transferAsset(transferTarget.id, data);
+      toast.success('Asset transferred successfully');
+      setTransferTarget(null);
+      await loadAllocationData();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Unable to transfer asset'));
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const availableAssets = mockAssets.filter((a) => a.status === 'Available');
 
   const columns = [
     {
@@ -98,15 +126,15 @@ export default function AssetAllocation() {
         </div>
       ),
     },
-    { header: 'Assigned To', accessorKey: 'employeeName', cell: ({ getValue }) => <span className="text-xs">{getValue()}</span> },
-    { header: 'Department', accessorKey: 'department', cell: ({ getValue }) => <span className="text-xs text-text-secondary">{getValue()}</span> },
+    { header: 'Assigned To', accessorKey: 'employeeName', cell: ({ getValue }) => <span className="text-xs">{getValue() || '-'}</span> },
+    { header: 'Department', accessorKey: 'department', cell: ({ getValue }) => <span className="text-xs text-text-secondary">{getValue() || '-'}</span> },
     { header: 'Allocated', accessorKey: 'allocatedDate', cell: ({ getValue }) => <span className="text-xs">{formatDate(getValue())}</span> },
     {
       header: 'Return Due',
       accessorKey: 'expectedReturn',
       cell: ({ row }) => {
         const overdue = row.original.expectedReturn && new Date(row.original.expectedReturn) < new Date() && row.original.status === 'Active';
-        return <span className={`text-xs font-medium ${overdue ? 'text-status-lost' : 'text-text-secondary'}`}>{row.original.expectedReturn ? formatDate(row.original.expectedReturn) : '—'}</span>;
+        return <span className={`text-xs font-medium ${overdue ? 'text-status-lost' : 'text-text-secondary'}`}>{row.original.expectedReturn ? formatDate(row.original.expectedReturn) : '-'}</span>;
       },
     },
     { header: 'Status', accessorKey: 'status', cell: ({ getValue }) => <StatusBadge status={getValue() === 'Active' ? 'Allocated' : 'Available'} size="sm" /> },
@@ -124,7 +152,6 @@ export default function AssetAllocation() {
 
   return (
     <div className="af-page max-w-screen-xl mx-auto">
-      {/* Header */}
       <div className="af-page-header">
         <div>
           <h1 className="af-page-title">Asset Allocation</h1>
@@ -135,7 +162,14 @@ export default function AssetAllocation() {
         </Button>
       </div>
 
-      {/* Stats strip */}
+      {error && (
+        <div className="mb-4 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <p className="text-sm font-semibold text-status-lost">Unable to load allocations</p>
+          <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          <Button variant="outline" size="sm" onClick={loadAllocationData} className="mt-3">Retry</Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           { label: 'Active Allocations', value: allocations.filter((a) => a.status === 'Active').length, color: '#5E244E' },
@@ -150,47 +184,43 @@ export default function AssetAllocation() {
         ))}
       </div>
 
-      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search assets, employees…" className="sm:w-72" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search assets, employees..." className="sm:w-72" />
         <div className="flex gap-2 sm:ml-auto">
-          {['Active', 'Returned', ''].map((s) => (
+          {['Active', 'Returned', ''].map((status) => (
             <button
-              key={s || 'all'}
-              onClick={() => setFilterStatus(s)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}
+              key={status || 'all'}
+              onClick={() => setFilterStatus(status)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${filterStatus === status ? 'bg-primary text-white border-primary' : 'bg-surface border-border text-text-secondary hover:border-primary/40'}`}
             >
-              {s || 'All'}
+              {status || 'All'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Conflict Warning Banner */}
       {conflictWarning && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-card">
           <AlertTriangle size={16} className="text-status-lost flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-status-lost">Allocation Conflict Detected</p>
-            <p className="text-xs text-red-600 mt-0.5">This asset is already allocated. Please choose an available asset or return the current allocation first.</p>
+            <p className="text-xs text-red-600 mt-0.5">{conflictWarning}</p>
           </div>
-          <button onClick={() => setConflictWarning(false)} className="text-red-400 hover:text-red-600">✕</button>
+          <button onClick={() => setConflictWarning('')} className="text-red-400 hover:text-red-600">X</button>
         </motion.div>
       )}
 
-      {/* Table */}
-      <DataTable columns={columns} data={filtered} emptyMessage="No allocations found" />
+      <DataTable columns={columns} data={filtered} loading={pageLoading} emptyMessage="No allocations found" />
 
-      {/* Allocate Modal */}
       <AllocateModal
         open={allocateOpen}
         onClose={() => setAllocateOpen(false)}
         onSubmit={handleAllocate}
         loading={loading}
         availableAssets={availableAssets}
+        employees={employees}
       />
 
-      {/* Return Modal */}
       <ReturnModal
         open={Boolean(returnTarget)}
         allocation={returnTarget}
@@ -199,20 +229,19 @@ export default function AssetAllocation() {
         loading={loading}
       />
 
-      {/* Transfer Dialog */}
       <TransferDialog
         open={Boolean(transferTarget)}
         allocation={transferTarget}
         onClose={() => setTransferTarget(null)}
         onConfirm={handleTransfer}
         loading={loading}
+        employees={employees}
       />
     </div>
   );
 }
 
-/* ---- Allocate Modal ---- */
-function AllocateModal({ open, onClose, onSubmit, loading, availableAssets }) {
+function AllocateModal({ open, onClose, onSubmit, loading, availableAssets, employees }) {
   const { register, handleSubmit, formState: { errors } } = useForm();
   return (
     <Modal open={open} onClose={onClose} title="Allocate Asset" size="sm"
@@ -221,16 +250,16 @@ function AllocateModal({ open, onClose, onSubmit, loading, availableAssets }) {
         <div>
           <label className="af-label">Select Asset</label>
           <select className="af-select" {...register('assetId', { required: 'Required' })}>
-            <option value="">Choose available asset…</option>
-            {availableAssets.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.tag})</option>)}
+            <option value="">Choose available asset...</option>
+            {availableAssets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} ({asset.tag})</option>)}
           </select>
           {errors.assetId && <p className="mt-1 text-xs text-status-lost">{errors.assetId.message}</p>}
         </div>
         <div>
           <label className="af-label">Assign To Employee</label>
           <select className="af-select" {...register('employeeId', { required: 'Required' })}>
-            <option value="">Choose employee…</option>
-            {mockEmployees.map((e) => <option key={e.id} value={e.id}>{e.name} — {e.department}</option>)}
+            <option value="">Choose employee...</option>
+            {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} - {employee.department || 'No department'}</option>)}
           </select>
           {errors.employeeId && <p className="mt-1 text-xs text-status-lost">{errors.employeeId.message}</p>}
         </div>
@@ -244,7 +273,6 @@ function AllocateModal({ open, onClose, onSubmit, loading, availableAssets }) {
   );
 }
 
-/* ---- Return Modal ---- */
 function ReturnModal({ open, allocation, onClose, onConfirm, loading }) {
   const { register, handleSubmit } = useForm({ defaultValues: { returnedDate: new Date().toISOString().split('T')[0] } });
   if (!allocation) return null;

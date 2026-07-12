@@ -18,7 +18,7 @@ export default function Login() {
   const [tab, setTab] = useState('login');
   const [showPw, setShowPw] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
-  const { login, isLoading } = useAuth();
+  const { login, signup, isLoading } = useAuth();
   const navigate = useNavigate();
 
   /* ---- Login form ---- */
@@ -49,15 +49,18 @@ export default function Login() {
       toast.success('Welcome back!');
       navigate('/');
     } else {
-      toast.error('Invalid email or password');
+      toast.error(result.error || 'Invalid email or password');
     }
   };
 
   const onSignup = async ({ name, email, password }) => {
-    // TODO: await axios.post('/api/auth/signup', { name, email, password })
-    await new Promise((r) => setTimeout(r, 800));
-    toast.success('Account created! Please log in.');
-    setTab('login');
+    const result = await signup({ name, email, password });
+    if (result.success) {
+      toast.success('Employee account created. Please log in.');
+      setTab('login');
+    } else {
+      toast.error(result.error || 'Unable to create account');
+    }
   };
 
   const onForgot = async ({ email }) => {
@@ -254,7 +257,7 @@ export default function Login() {
                     })}
                   />
 
-                  <Button type="submit" variant="primary" className="w-full mt-2" iconRight={<ArrowRight size={15} />}>
+                  <Button type="submit" variant="primary" className="w-full mt-2" loading={isLoading} iconRight={<ArrowRight size={15} />}>
                     Create Account
                   </Button>
                 </form>
