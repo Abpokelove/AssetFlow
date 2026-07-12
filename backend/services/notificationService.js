@@ -84,7 +84,7 @@ const parseReadFilter = (value) => {
 };
 
 const notificationService = {
-  async getNotifications({ page = 1, pageSize = 10, type, read } = {}) {
+  async getNotifications({ page = 1, pageSize = 10, type, read, priority, search } = {}) {
     const readFilter = parseReadFilter(read);
     const allNotifications = await getAllNotifications();
     let notifications = allNotifications;
@@ -95,6 +95,18 @@ const notificationService = {
 
     if (readFilter !== null) {
       notifications = notifications.filter((notification) => notification.read === readFilter);
+    }
+
+    if (priority) {
+      notifications = notifications.filter((notification) => notification.priority === priority);
+    }
+
+    if (search) {
+      const needle = search.toLowerCase();
+      notifications = notifications.filter((notification) =>
+        [notification.title, notification.message, notification.type, notification.priority]
+          .some((value) => (value || "").toLowerCase().includes(needle))
+      );
     }
 
     const total = notifications.length;

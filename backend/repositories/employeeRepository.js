@@ -85,6 +85,40 @@ const employeeRepository = {
     return res.rows.map((row) => row.name);
   },
 
+  async update(id, data) {
+    const fieldMap = {
+      name: "name",
+      email: "email",
+      department: "department",
+      role: "role",
+      status: "status",
+      allocatedAssets: "allocated_assets",
+    };
+    const fields = [];
+    const params = [];
+
+    Object.entries(fieldMap).forEach(([key, column]) => {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        params.push(data[key]);
+        fields.push(`${column} = $${params.length}`);
+      }
+    });
+
+    if (fields.length === 0) {
+      return this.findById(id);
+    }
+
+    params.push(id);
+    const res = await db.query(
+      `UPDATE employees
+       SET ${fields.join(", ")}
+       WHERE id = $${params.length}
+       RETURNING id, name, email, department, role, status, join_date AS "joinDate", allocated_assets AS "allocatedAssets"`,
+      params
+    );
+    return res.rows[0];
+  },
+
   async create({ name, email, passwordHash, department, role = "Employee", status = "Active" }) {
     // Generate ID in format emp-XXX
     const idRes = await db.query("SELECT id FROM employees WHERE id LIKE 'emp-%'");

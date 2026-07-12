@@ -3,12 +3,14 @@ const notificationService = require("../services/notificationService");
 const notificationController = {
   async getNotifications(req, res, next) {
     try {
-      const { page, pageSize, type, read } = req.query;
+      const { page, pageSize, type, read, priority, search } = req.query;
       const result = await notificationService.getNotifications({
         page: page ? parseInt(page, 10) : 1,
         pageSize: pageSize ? parseInt(pageSize, 10) : 10,
         type,
         read,
+        priority,
+        search,
       });
       res.status(200).json(result);
     } catch (error) {

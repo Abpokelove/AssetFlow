@@ -6,5 +6,6 @@ const router = express.Router();
 
 router.get("/", authMiddleware, departmentController.getDepartments);
 router.post("/", authMiddleware, requireRoles("ADMIN", "ASSET_MANAGER"), departmentController.createDepartment);
+router.put("/:id", authMiddleware, requireRoles("ADMIN", "ASSET_MANAGER"), departmentController.updateDepartment);
 
 module.exports = router;

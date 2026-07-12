@@ -35,11 +35,12 @@ const departmentService = {
     });
   },
 
-  async updateDepartment(id, { name, manager }) {
+  async updateDepartment(id, data = {}) {
     await this.getDepartmentById(id);
     const updates = {};
+    const { name, manager } = data;
 
-    if (Object.prototype.hasOwnProperty.call(arguments[1] || {}, "name")) {
+    if (Object.prototype.hasOwnProperty.call(data, "name")) {
       if (!name || name.trim() === "") {
         const error = new Error("Department name is required");
         error.statusCode = 400;
@@ -55,7 +56,7 @@ const departmentService = {
       updates.name = name.trim();
     }
 
-    if (Object.prototype.hasOwnProperty.call(arguments[1] || {}, "manager")) {
+    if (Object.prototype.hasOwnProperty.call(data, "manager")) {
       updates.manager = manager ? manager.trim() : null;
     }
 

@@ -26,6 +26,24 @@ const employeeController = {
     }
   },
 
+  async updateEmployee(req, res, next) {
+    try {
+      const employee = await employeeService.updateEmployee(req.params.id, req.body);
+      res.status(200).json(employee);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateEmployeeStatus(req, res, next) {
+    try {
+      const employee = await employeeService.updateEmployeeStatus(req.params.id, req.body);
+      res.status(200).json(employee);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async createEmployee(req, res, next) {
     try {
       const employee = await employeeService.createEmployee(req.body);
