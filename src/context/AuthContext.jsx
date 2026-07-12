@@ -16,8 +16,8 @@ const AuthContext = createContext(null);
 // Mock user — backend team will replace with JWT/session
 const MOCK_USER = {
   id: 'emp-001',
-  name: 'Sarah Mitchell',
-  email: 'sarah.mitchell@acme.com',
+  name: 'Akshaya',
+  email: 'akshayavinothkumar@gmail.com',
   role: 'Asset Manager',
   department: 'IT Operations',
   avatar: null,
