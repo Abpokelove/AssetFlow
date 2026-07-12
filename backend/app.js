@@ -80,6 +80,9 @@ apiRouter.use("/departments", require("./routes/departmentRoutes"));
 apiRouter.use("/categories", require("./routes/categoryRoutes"));
 apiRouter.use("/employees", require("./routes/employeeRoutes"));
 apiRouter.use("/assets", require("./routes/assetRoutes"));
+apiRouter.use("/reports", require("./routes/reportRoutes"));
+apiRouter.use("/notifications", require("./routes/notificationRoutes"));
+apiRouter.use("/allocations", require("./routes/allocationRoutes"));
 
 // Mount API Router on /api
 app.use("/api", apiRouter);

@@ -73,6 +73,18 @@ const employeeRepository = {
     return res.rows[0];
   },
 
+  async findRolesByEmployeeId(employeeId) {
+    const res = await db.query(
+      `SELECT r.name
+       FROM roles r
+       INNER JOIN employee_roles er ON er.role_id = r.id
+       WHERE er.employee_id = $1
+       ORDER BY r.name`,
+      [employeeId]
+    );
+    return res.rows.map((row) => row.name);
+  },
+
   async create({ name, email, passwordHash, department, role = "Employee", status = "Active" }) {
     // Generate ID in format emp-XXX
     const idRes = await db.query("SELECT id FROM employees WHERE id LIKE 'emp-%'");
