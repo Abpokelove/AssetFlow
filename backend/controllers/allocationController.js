@@ -34,6 +34,42 @@ const allocationController = {
       next(error);
     }
   },
+
+  async allocateAsset(req, res, next) {
+    try {
+      const allocation = await allocationService.allocateAsset(req.body, req.user);
+      res.status(201).json(allocation);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async transferAsset(req, res, next) {
+    try {
+      const allocation = await allocationService.transferAsset(req.params.id, req.body, req.user);
+      res.status(200).json(allocation);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async returnAsset(req, res, next) {
+    try {
+      const allocation = await allocationService.returnAsset(req.params.id, req.body, req.user);
+      res.status(200).json(allocation);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async checkConflicts(req, res, next) {
+    try {
+      const result = await allocationService.checkConflicts(req.query);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 module.exports = allocationController;
