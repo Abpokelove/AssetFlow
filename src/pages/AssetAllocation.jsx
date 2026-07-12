@@ -29,21 +29,43 @@ export default function AssetAllocation() {
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [employeeError, setEmployeeError] = useState(null);
 
   const loadAllocationData = async () => {
     setPageLoading(true);
     setError(null);
+    setEmployeeError(null);
     try {
-      const [allocationRes, assetRes, employeeRes] = await Promise.all([
+      const [allocationResult, assetResult, employeeResult] = await Promise.allSettled([
         getAllocations({ pageSize: 100 }),
         getAssets({ pageSize: 100 }),
         getEmployees({ pageSize: 100 }),
       ]);
-      setAllocations(unwrapPage(allocationRes).data);
-      setAssets(unwrapPage(assetRes).data);
-      setEmployees(unwrapPage(employeeRes).data);
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Unable to load allocation data'));
+
+      if (allocationResult.status === 'fulfilled') {
+        setAllocations(unwrapPage(allocationResult.value).data);
+      } else {
+        setAllocations([]);
+        setError(apiErrorMessage(allocationResult.reason, 'Unable to load allocations'));
+      }
+
+      if (assetResult.status === 'fulfilled') {
+        setAssets(unwrapPage(assetResult.value).data);
+      } else {
+        setAssets([]);
+        setError(apiErrorMessage(assetResult.reason, 'Unable to load assets'));
+      }
+
+      if (employeeResult.status === 'fulfilled') {
+        setEmployees(unwrapPage(employeeResult.value).data);
+      } else {
+        setEmployees([]);
+        setEmployeeError(
+          employeeResult.reason?.response?.status === 403
+            ? 'Your current role does not have permission to view employee records, so allocation actions are unavailable.'
+            : apiErrorMessage(employeeResult.reason, 'Unable to load employee records')
+        );
+      }
     } finally {
       setPageLoading(false);
     }
@@ -141,12 +163,15 @@ export default function AssetAllocation() {
     {
       header: 'Actions',
       id: 'actions',
-      cell: ({ row }) => row.original.status === 'Active' ? (
-        <div className="flex gap-1">
-          <button onClick={() => setTransferTarget(row.original)} className="text-xs text-primary hover:underline font-medium px-2 py-1 rounded hover:bg-background transition-colors">Transfer</button>
-          <button onClick={() => setReturnTarget(row.original)} className="text-xs text-status-available hover:underline font-medium px-2 py-1 rounded hover:bg-background transition-colors">Return</button>
-        </div>
-      ) : <span className="text-xs text-text-muted">Returned</span>,
+      cell: ({ row }) => {
+        if (employeeError) return <span className="text-xs text-text-muted">Unavailable</span>;
+        return row.original.status === 'Active' ? (
+          <div className="flex gap-1">
+            <button onClick={() => setTransferTarget(row.original)} className="text-xs text-primary hover:underline font-medium px-2 py-1 rounded hover:bg-background transition-colors">Transfer</button>
+            <button onClick={() => setReturnTarget(row.original)} className="text-xs text-status-available hover:underline font-medium px-2 py-1 rounded hover:bg-background transition-colors">Return</button>
+          </div>
+        ) : <span className="text-xs text-text-muted">Returned</span>;
+      },
     },
   ];
 
@@ -157,7 +182,7 @@ export default function AssetAllocation() {
           <h1 className="af-page-title">Asset Allocation</h1>
           <p className="af-page-subtitle">Manage asset assignments, transfers, and returns</p>
         </div>
-        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setAllocateOpen(true)}>
+        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setAllocateOpen(true)} disabled={Boolean(employeeError)}>
           Allocate Asset
         </Button>
       </div>
@@ -166,6 +191,14 @@ export default function AssetAllocation() {
         <div className="mb-4 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
           <p className="text-sm font-semibold text-status-lost">Unable to load allocations</p>
           <p className="text-xs text-status-lost/80 mt-0.5">{error}</p>
+          <Button variant="outline" size="sm" onClick={loadAllocationData} className="mt-3">Retry</Button>
+        </div>
+      )}
+
+      {employeeError && (
+        <div className="mb-4 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+          <p className="text-sm font-semibold text-status-lost">Allocation actions unavailable</p>
+          <p className="text-xs text-status-lost/80 mt-0.5">{employeeError}</p>
           <Button variant="outline" size="sm" onClick={loadAllocationData} className="mt-3">Retry</Button>
         </div>
       )}

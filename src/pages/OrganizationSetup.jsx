@@ -56,6 +56,7 @@ export default function OrganizationSetup() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [employeeError, setEmployeeError] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
 
   const [departments, setDepartments] = useState([]);
@@ -65,17 +66,38 @@ export default function OrganizationSetup() {
   const loadOrganization = async () => {
     setLoading(true);
     setError(null);
+    setEmployeeError(null);
     try {
-      const [deptRes, catRes, empRes] = await Promise.all([
+      const [deptResult, catResult, empResult] = await Promise.allSettled([
         getDepartments(),
         getCategories(),
         getEmployees({ pageSize: 100 }),
       ]);
-      setDepartments(unwrapList(deptRes));
-      setCategories(unwrapList(catRes));
-      setEmployees(unwrapPage(empRes).data);
-    } catch (err) {
-      setError(apiErrorMessage(err, 'Unable to load organization data'));
+
+      if (deptResult.status === 'fulfilled') {
+        setDepartments(unwrapList(deptResult.value));
+      } else {
+        setDepartments([]);
+        setError(apiErrorMessage(deptResult.reason, 'Unable to load departments'));
+      }
+
+      if (catResult.status === 'fulfilled') {
+        setCategories(unwrapList(catResult.value));
+      } else {
+        setCategories([]);
+        setError(apiErrorMessage(catResult.reason, 'Unable to load asset categories'));
+      }
+
+      if (empResult.status === 'fulfilled') {
+        setEmployees(unwrapPage(empResult.value).data);
+      } else {
+        setEmployees([]);
+        setEmployeeError(
+          empResult.reason?.response?.status === 403
+            ? 'Your current role does not have permission to view employee records.'
+            : apiErrorMessage(empResult.reason, 'Unable to load employee records')
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -164,12 +186,20 @@ export default function OrganizationSetup() {
           {/* Toolbar */}
           <div className="flex flex-col sm:flex-row gap-3 mb-5">
             <SearchBar value={search} onChange={setSearch} placeholder={`Search ${activeTab}…`} className="sm:w-72" />
-            <Button variant="primary" icon={<Plus size={15} />} onClick={openAdd} className="sm:ml-auto">
+            <Button variant="primary" icon={<Plus size={15} />} onClick={openAdd} className="sm:ml-auto" disabled={activeTab === 'employees' && Boolean(employeeError)}>
               Add {activeTab === 'departments' ? 'Department' : activeTab === 'categories' ? 'Category' : 'Employee'}
             </Button>
           </div>
 
           {loading && <p className="text-sm text-text-muted py-8">Loading organization data...</p>}
+
+          {!loading && activeTab === 'employees' && employeeError && (
+            <div className="mb-5 p-4 bg-status-lost/10 border border-status-lost/20 rounded-card">
+              <p className="text-sm font-semibold text-status-lost">Unable to load employees</p>
+              <p className="text-xs text-status-lost/80 mt-0.5">{employeeError}</p>
+              <Button variant="outline" size="sm" onClick={loadOrganization} className="mt-3">Retry</Button>
+            </div>
+          )}
 
           {/* ---- Departments ---- */}
           {!loading && activeTab === 'departments' && (
@@ -227,7 +257,7 @@ export default function OrganizationSetup() {
           )}
 
           {/* ---- Employees ---- */}
-          {!loading && activeTab === 'employees' && (
+          {!loading && activeTab === 'employees' && !employeeError && (
             <div className="overflow-hidden rounded-card border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-background">

@@ -17,6 +17,7 @@ import { apiErrorMessage, unwrapPage } from '../services/api/responseUtils';
 import { formatDateTime } from '../utils/helpers';
 
 const localizer = momentLocalizer(moment);
+const BOOKINGS_API_MOUNTED = false;
 
 const STATUS_COLORS_CAL = {
   Upcoming: '#5E244E',
@@ -37,6 +38,7 @@ export default function ResourceBooking() {
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [bookingApiAvailable, setBookingApiAvailable] = useState(BOOKINGS_API_MOUNTED);
 
   const { register, handleSubmit, formState: { errors }, reset, watch } = useForm();
 
@@ -47,11 +49,24 @@ export default function ResourceBooking() {
       const assetRes = await getAssets({ pageSize: 100 });
       setAssets(unwrapPage(assetRes).data.filter((asset) => ['Available', 'Reserved'].includes(asset.status)));
 
+      if (!BOOKINGS_API_MOUNTED) {
+        setBookings([]);
+        setBookingApiAvailable(false);
+        setError('Booking backend API is not mounted yet. Live booking data will be available after /api/bookings is added.');
+        return;
+      }
+
       const bookingRes = await getBookings({ pageSize: 100 });
       setBookings(unwrapPage(bookingRes).data);
+      setBookingApiAvailable(true);
     } catch (err) {
       setBookings([]);
-      setError(apiErrorMessage(err, 'Booking API is not available yet'));
+      if (err?.response?.status === 404) {
+        setBookingApiAvailable(false);
+        setError('Booking backend API is not mounted yet. Live booking data will be available after /api/bookings is added.');
+      } else {
+        setError(apiErrorMessage(err, 'Booking API is not available yet'));
+      }
     } finally {
       setPageLoading(false);
     }
@@ -78,6 +93,11 @@ export default function ResourceBooking() {
   }), [bookings, search, filterStatus]);
 
   const handleCreate = async (data) => {
+    if (!bookingApiAvailable) {
+      setOverlapWarning('Booking API is not available yet. Please wait until /api/bookings is mounted in the backend.');
+      return;
+    }
+
     setLoading(true);
     setOverlapWarning('');
     try {
@@ -105,6 +125,11 @@ export default function ResourceBooking() {
   };
 
   const handleCancel = async (bookingId) => {
+    if (!bookingApiAvailable) {
+      toast.error('Booking API is not available yet.');
+      return;
+    }
+
     setLoading(true);
     try {
       await cancelBooking(bookingId, { reason: 'User cancelled' });
@@ -130,7 +155,7 @@ export default function ResourceBooking() {
           <h1 className="af-page-title">Resource Booking</h1>
           <p className="af-page-subtitle">Reserve shared assets and manage booking calendar</p>
         </div>
-        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setModalOpen(true)}>
+        <Button variant="primary" icon={<Plus size={15} />} onClick={() => setModalOpen(true)} disabled={!bookingApiAvailable || pageLoading}>
           New Booking
         </Button>
       </div>
@@ -199,8 +224,10 @@ export default function ResourceBooking() {
                       style: { backgroundColor: event.color, borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 500 },
                     })}
                     onSelectEvent={(event) => setSelectedBooking(event.resource)}
-                    onSelectSlot={() => setModalOpen(true)}
-                    selectable
+                    onSelectSlot={() => {
+                      if (bookingApiAvailable) setModalOpen(true);
+                    }}
+                    selectable={bookingApiAvailable}
                     popup
                   />
                 )}
@@ -288,7 +315,7 @@ export default function ResourceBooking() {
         footer={
           <>
             <Button variant="ghost" onClick={() => { setModalOpen(false); reset(); setOverlapWarning(''); }} disabled={loading}>Cancel</Button>
-            <Button variant="primary" onClick={handleSubmit(handleCreate)} loading={loading}>Create Booking</Button>
+            <Button variant="primary" onClick={handleSubmit(handleCreate)} loading={loading} disabled={!bookingApiAvailable}>Create Booking</Button>
           </>
         }
       >
